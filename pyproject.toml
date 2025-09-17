@@ -1,0 +1,80 @@
+[project]
+name = "lct2025-backend"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Piskunov Stepan",email = "st-psk@mail.ru"}
+]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry]
+packages = [{ include = "app", from = "src" }]
+
+
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+
+fastapi             = ">=0.116.2,<0.117.0"
+sqlalchemy          = ">=2.0.43,<3.0.0"
+dishka              = ">=1.7.1,<2.0.0"
+uvicorn             = ">=0.35.0,<0.36.0"
+structlog           = ">=25.4.0,<26.0.0"
+httpx               = ">=0.28.1,<0.29.0"
+pydantic            = ">=2.11.9,<3.0.0"
+pydantic-settings   = ">=2.10.1,<3.0.0"
+pyjwt               = {extras = ["cryptography"], version = "^2.10.1"}
+pytz = "^2025.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest          = "~8.3.5"
+pytest-asyncio  = "~1.0.0"
+ruff            = "~0.11.12"
+mypy            = "~1.17.1"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff.format]
+docstring-code-format = true
+preview = true
+quote-style = "single"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "B", "Q", "ANN", "RET", "SLF", "SIM", "UP", "COM", "PL", "PERF", "RUF"]
+ignore = ["F402", "E701", "UP032", "Q000", "Q003", "COM812", "E712", "RUF003", "RUF001", "RUF002"]
+
+explicit-preview-rules = true
+
+logger-objects = ["logger.logger"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends"
+]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-returns = 10
+
+[tool.mypy]
+plugins = ["sqlalchemy.ext.mypy.plugin", "pydantic.mypy"]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src"]
+python_files = ["*_test.py"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+
+markers = [
+    "e2e: end-to-end tests"
+]
+
+addopts = "--strict-markers --maxfail=1"
+
+env_files = [
+    "test.env"
+]
