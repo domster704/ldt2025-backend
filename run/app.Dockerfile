@@ -52,12 +52,6 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
 
 FROM base AS runtime
 
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt/lists \
-    apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates libpq5 libstdc++6 && \
-    rm -rf /var/lib/apt/lists/*
-
 ARG VCS_REF=""
 LABEL org.opencontainers.image.title="woym-market-server" \
       org.opencontainers.image.description="REST API server for Woym Market" \

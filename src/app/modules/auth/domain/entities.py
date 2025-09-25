@@ -1,14 +1,13 @@
 from dataclasses import dataclass
-from typing import Optional, AnyStr
+from typing import Optional
+from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
-class User:
-    id: AnyStr
-    username: AnyStr
-    email: str | None = None
-    is_active: bool = True
-    roles: tuple[str, ...] = ()
+class App:
+    id: UUID
+    user_agent: str
+    passphrase: str
 
 @dataclass(frozen=True, slots=True)
 class Tokens:

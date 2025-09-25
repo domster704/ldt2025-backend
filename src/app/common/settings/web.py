@@ -15,25 +15,50 @@ class RunMode(Enum):
     TEST = 'test'
     DEV = 'dev'
 
+class AppSettings(BaseSettings):
+    run_mode: RunMode = 'dev'
 
-class WebServerSettings(BaseSettings):
+
+app_settings = AppSettings()
+
+
+class HTTPServerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')
 
-    HTTP_HOST: str = "0.0.0.0"
-    HTTP_PORT: int = 8000
-    RUN_MODE: RunMode = RunMode.DEV
-    API_VERSION: str = '2.0.1'
+    http_host: str = "0.0.0.0"
+    http_port: int = 8000
+    api_version: str
 
     @cached_property
     def origins(self):
-        match self.RUN_MODE:
+        match app_settings.run_mode:
             case RunMode.PROD:
-                return ['https://woym-market.ru']
+                return ['*']
             case RunMode.TEST:
-                return ['https://test.woym-market.ru']
+                return ['*']
             case RunMode.DEV:
                 return ['*']
             case _:
                 raise InitializationError(f'Unsupported RUN_MODE: {self.RUN_MODE}')
 
-web_settings = WebServerSettings()
+# class WebsocketsSettings(BaseSettings):
+#     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')
+#
+#     HTTP_HOST: str = "0.0.0.0"
+#     HTTP_PORT: int = 8001
+#     API_VERSION: str
+#
+#     @cached_property
+#     def origins(self):
+#         match self.RUN_MODE:
+#             case RunMode.PROD:
+#                 return ['*']
+#             case RunMode.TEST:
+#                 return ['*']
+#             case RunMode.DEV:
+#                 return ['*']
+#             case _:
+#                 raise InitializationError(f'Unsupported RUN_MODE: {self.RUN_MODE}')
+
+http_server_settings = HTTPServerSettings()
+# websocket_settings = WebsocketsSettings()

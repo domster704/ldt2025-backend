@@ -1,6 +1,6 @@
 from collections.abc import Callable, Awaitable
 from typing import Protocol, Optional
-from .entities import User, Tokens
+from .entities import App, Tokens
 from .value_objects import AccessToken, RefreshToken
 
 class AuthProvider(Protocol):
@@ -10,7 +10,7 @@ class AuthProvider(Protocol):
     async def verify(self, token: AccessToken) -> dict: ...
 
 class UserRepository(Protocol):
-    async def get_by_sub(self, sub: str) -> Optional[User]: ...
-    async def upsert_from_claims(self, claims: dict) -> User: ...
+    async def get_by_sub(self, sub: str) -> Optional[App]: ...
+    async def upsert_from_claims(self, claims: dict) -> App: ...
 
 TokenVerifier = Callable[[AccessToken], Awaitable[dict]]

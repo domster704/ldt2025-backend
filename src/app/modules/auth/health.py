@@ -4,8 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.common.settings import KeycloakSettings
 
 
-def make_auth_checks(engine: AsyncEngine, kc: KeycloakSettings) -> list[HealthCheck]:
+def make_auth_checks(engine: AsyncEngine) -> list[HealthCheck]:
     return [
         db_check(engine, name="auth-db", critical=True),
-        keycloak_check(issuer=kc.issuer, name="keycloak", critical=True),
+        # keycloak_check(issuer=kc.issuer, name="keycloak", critical=True),
     ]

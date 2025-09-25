@@ -1,14 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
 
-from dishka import Provider, Scope, provide, make_container, Container, make_async_container, AsyncContainer
+from dishka import Provider, Scope, provide, make_async_container, AsyncContainer
 from dishka.integrations.fastapi import FastapiProvider
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.common.db import create_db_resources
-from app.common.settings import WebServerSettings, KeycloakSettings, DBSettings
-from app.modules.auth.adapters.jwt_token_service import JWTTokenService
-from app.modules.auth.adapters.keycloak_oidc import KeycloakOIDC
+from app.common.settings import KeycloakSettings, DBSettings
 from app.modules.auth.adapters.user_repository_sqlalchemy import SAUserRepository
 from app.modules.auth.health import make_auth_checks
 from app.modules.monitoring.health.aggregation import HealthCheck
@@ -41,23 +39,6 @@ class AppProvider(Provider):
         return async_sessionmaker(bind=db_engine, expire_on_commit=False, class_=AsyncSession)
 
     @provide
-    def keycloak_settings(self) -> KeycloakSettings:
-        return KeycloakSettings(_env_file=self._env_file)
-
-    @provide
-    def auth_provider(self, kc: KeycloakSettings) -> KeycloakOIDC:
-        return KeycloakOIDC(
-            issuer=kc.issuer,
-            client_id=kc.client_id,
-            client_secret=kc.client_secret,
-            redirect_uri=kc.redirect_uri,
-        )
-
-    @provide
-    def token_verifier(self, kc: KeycloakSettings) -> JWTTokenService:
-        return JWTTokenService(issuer=kc.issuer, client_id=kc.client_id)
-
-    @provide
     def user_repo(self, session_factory: async_sessionmaker[AsyncSession]) -> SAUserRepository:
         return SAUserRepository(session_factory)
 
@@ -65,10 +46,9 @@ class AppProvider(Provider):
     def health_checks(
         self,
         db_engine: AsyncEngine,
-        keycloak_settings: KeycloakSettings,
     ) -> list[HealthCheck]:
         checks: list[HealthCheck] = []
-        checks += make_auth_checks(db_engine, keycloak_settings)
+        checks += make_auth_checks(db_engine)
         return checks
 
 

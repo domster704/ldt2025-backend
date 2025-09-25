@@ -6,18 +6,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from dishka.integrations.fastapi import setup_dishka
 
 from app.common.container import build_container
-from app.common.settings.web import WebServerSettings, RunMode, web_settings
+from app.common.settings.web import RunMode, app_settings, http_server_settings
 from app.logger import setup_logger
 from app.middlewares import HTTPLogMiddleware
 
-# from app.modules.core.router import router as core_router # type: ignore
-from app.modules.auth.router import router as auth_router
+from app.modules.core.infra.routes.base import router as core_router
+# from app.modules.auth.router import router as auth_router
 from app.modules.monitoring.health.router import router as health_router
 
 ROUTERS = [
     health_router,
-    # core_router,
-    auth_router,
+    core_router,
+    # auth_router,
 ]
 
 
@@ -29,17 +29,17 @@ async def lifespan(app: FastAPI):
         await app.state.dishka_container.close()
 
 
-def create_app(env_name: str = ".env") -> tuple[FastAPI, WebServerSettings]:
+def create_app(env_name: str = ".env") -> FastAPI:
     container = build_container(env_name)
 
     def _is_dev() -> bool:
-        return web_settings.RUN_MODE == RunMode.DEV
+        return app_settings.run_mode == RunMode.DEV
 
     app = FastAPI(
         title="woym-market-server",
         root_path="/backend",
-        version=web_settings.API_VERSION,
-        docs_url=None if _is_dev() else "/docs",
+        version=http_server_settings.api_version,
+        docs_url=None if not _is_dev() else "/docs",
         redoc_url=None,
         lifespan=lifespan,
     )
@@ -55,7 +55,7 @@ def create_app(env_name: str = ".env") -> tuple[FastAPI, WebServerSettings]:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=web_settings.origins,
+        allow_origins=http_server_settings.origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -64,4 +64,4 @@ def create_app(env_name: str = ".env") -> tuple[FastAPI, WebServerSettings]:
     for router in ROUTERS:
         app.include_router(router)
 
-    return app, web_settings
+    return app
