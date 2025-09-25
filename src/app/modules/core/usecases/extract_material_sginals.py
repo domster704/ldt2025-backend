@@ -72,7 +72,7 @@ def extract_material_signals(data: ZipFile) -> Any:
 
                     try:
                         # floor to whole seconds for continuity across segments
-                        t_dec = Decimal(raw_t_s)
+                        t_dec = Decimal(raw_t_s) * 1000
                         t = int(t_dec.to_integral_value(rounding=ROUND_FLOOR))
                     except Exception:
                         # skip rows with broken timestamp
