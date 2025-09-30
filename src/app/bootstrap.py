@@ -13,11 +13,13 @@ from .middlewares import HTTPLogMiddleware
 from .modules.core.infra.routes.http.base import router as core_router
 from .modules.monitoring.health.router import router as health_router
 from .modules.ingest.infra.routes.base import router as ingest_router
+from .modules.streaming.presentation.router.streaming_router import streaming_router
 
 ROUTERS: list[tuple[APIRouter, str | None]] = [
     (health_router, None),
     (core_router, None),
-    (ingest_router, "/ws/ingest")
+    (ingest_router, "/ws/ingest"),
+    (streaming_router, "/ws/streaming"),
 ]
 
 

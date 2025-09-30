@@ -7,14 +7,15 @@ from dataclasses import dataclass
 from statistics import mean
 from typing import Any
 
-import aiohttp
 import orjson
 from fastapi import APIRouter
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
+from app.modules.ingest.entities.ctg import CardiotocographyPoint
+from app.modules.ingest.infra.queue import signal_queue
+
 router = APIRouter()
 
-OUTBOUND_WS_URL = "ws://localhost:9000/ws/outbound"
 RESULTS_SINK = os.getenv("INGEST_RESULTS_SINK", "console").lower()
 
 
@@ -63,89 +64,6 @@ class Sample:
     ts: float
     bpm: float
     uterus: float
-
-
-class OutboundWSClient:
-    """Клиент для отправки данных во внешний WebSocket.
-
-    Поддерживает:
-    - Автоматическое переподключение при обрыве соединения.
-    - Отправку JSON-сообщений с ретраями.
-    - Закрытие соединений и освобождение ресурсов.
-
-    Attributes:
-        _url (str): Адрес WebSocket-сервера.
-        _heartbeat (int): Интервал heartbeat.
-        _session (aiohttp.ClientSession | None): HTTP-сессия aiohttp.
-        _ws (aiohttp.ClientWebSocketResponse | None): Объект WebSocket.
-        _lock (asyncio.Lock): Блокировка для потокобезопасного подключения.
-    """
-
-    def __init__(self, url: str, heartbeat: int = 20) -> None:
-        """Создаёт клиента.
-
-        Args:
-            url (str): URL WebSocket-сервера.
-            heartbeat (int, optional): Интервал heartbeat в секундах. По умолчанию 20.
-        """
-        self._url = url
-        self._heartbeat = heartbeat
-        self._session: aiohttp.ClientSession | None = None
-        self._ws: aiohttp.ClientWebSocketResponse | None = None
-        self._lock = asyncio.Lock()
-
-    @property
-    def is_connected(self) -> bool:
-        """Проверяет, установлено ли соединение.
-
-        Returns:
-            bool: True если соединение активно, иначе False.
-        """
-        return self._ws is not None and not self._ws.closed
-
-    async def connect(self) -> None:
-        """Устанавливает соединение с WebSocket."""
-        async with self._lock:
-            if self.is_connected:
-                return
-            if not self._session or self._session.closed:
-                self._session = aiohttp.ClientSession()
-            try:
-                self._ws = await self._session.ws_connect(
-                    self._url, heartbeat=self._heartbeat, autoping=True
-                )
-            except Exception:
-                self._ws = None
-
-    async def send_json(self, payload: dict[str, Any]) -> None:
-        """Отправляет JSON-сообщение в WebSocket.
-
-        Если соединение разорвано, пытается переподключиться.
-
-        Args:
-            payload (dict[str, Any]): Словарь для отправки.
-        """
-        if not self.is_connected:
-            await self.connect()
-        if not self.is_connected:
-            return
-        try:
-            assert self._ws is not None
-            await self._ws.send_str(json_dumps(payload))
-        except Exception:
-            await self.connect()
-            if self.is_connected and self._ws is not None:
-                with contextlib.suppress(Exception):
-                    await self._ws.send_str(json_dumps(payload))
-
-    async def close(self) -> None:
-        """Закрывает соединение и освобождает ресурсы."""
-        if self._ws:
-            with contextlib.suppress(Exception):
-                await self._ws.close()
-        if self._session:
-            with contextlib.suppress(Exception):
-                await self._session.close()
 
 
 class SignalProcessor:
@@ -248,22 +166,26 @@ class SignalProcessor:
         return result[-self.fs:]
 
 
-async def forwarder(payload: dict[str, Any], out_client: OutboundWSClient | None) -> None:
+async def forwarder(payload: dict[str, float]) -> None:
     """Отправляет данные в консоль или во внешний WebSocket.
 
     Args:
-        payload (dict[str, Any]): Словарь данных для отправки.
-        out_client (OutboundWSClient | None): Клиент для WebSocket.
+        payload (dict[str, float]): Словарь данных для отправки.
     """
     if RESULTS_SINK == "console":
         print(json_dumps(payload), datetime.datetime.now())
-    elif out_client:
-        await out_client.send_json(payload)
+    elif RESULTS_SINK == "signal":
+        print(json_dumps(payload), datetime.datetime.now())
+        point = CardiotocographyPoint(
+            bpm=payload["bpm"],
+            uc=payload["uterus"],
+            timestamp=payload["timestamp"],
+        )
+        await signal_queue.put(point)
 
 
 async def processing_loop(
         queue: asyncio.Queue[Sample],
-        out_client: OutboundWSClient | None,
         fs: int = 5,
 ) -> None:
     """Основной цикл обработки сигналов.
@@ -273,7 +195,6 @@ async def processing_loop(
 
     Args:
         queue (asyncio.Queue[Sample]): Очередь входных сэмплов.
-        out_client (OutboundWSClient | None): WebSocket-клиент для передачи данных.
         fs (int, optional): Количество выборок на секунду. По умолчанию 5.
     """
     processor = SignalProcessor(fs)
@@ -321,9 +242,10 @@ async def processing_loop(
                         payload = {
                             "type": "console",
                             "timestamp": sec_start + i * step,
-                            "value": {"bpm": s.bpm, "uterus": s.uterus},
+                            "bpm": s.bpm,
+                            "uterus": s.uterus,
                         }
-                        await forwarder(payload, out_client)
+                        await forwarder(payload)
                     last_value = data[-1]
                     print('============')
 
@@ -348,25 +270,20 @@ async def ingest_medical_signals(websocket: WebSocket) -> None:
     await websocket.accept()
     queue: asyncio.Queue[Sample] = asyncio.Queue()
     processing_task: asyncio.Task | None = None
-    out_client: OutboundWSClient | None = None
     processor = SignalProcessor()
 
     try:
-        if RESULTS_SINK == "ws":
-            out_client = OutboundWSClient(OUTBOUND_WS_URL, heartbeat=20)
-            await out_client.connect()
-
-        processing_task = asyncio.create_task(processing_loop(queue, out_client))
+        processing_task = asyncio.create_task(processing_loop(queue))
 
         while True:
             raw = await websocket.receive_text()
             try:
                 msg = orjson.loads(raw)
-            except Exception as e:
+            except Exception:
                 continue
 
             if msg.get("type") == "end":
-                await forwarder({"type": "end"}, out_client)
+                await forwarder({"type": "end"})
                 break
 
             if msg.get("type") != "signal":
@@ -383,7 +300,5 @@ async def ingest_medical_signals(websocket: WebSocket) -> None:
             processing_task.cancel()
             with contextlib.suppress(Exception):
                 await processing_task
-        if out_client:
-            await out_client.close()
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()

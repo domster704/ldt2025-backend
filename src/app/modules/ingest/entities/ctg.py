@@ -1,13 +1,9 @@
-from dataclasses import dataclass, field
-from datetime import datetime
-from decimal import Decimal
-
-from app.common.dataclass_mixins import DecimalPlaces, DecimalRoundingMixin
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
-class CardiotocographyPoint(DecimalRoundingMixin):
+class CardiotocographyPoint:
     """ Точка КТГ """
-    bmp: Decimal | None = field(metadata={'precision': DecimalPlaces.TWO})
-    uc: Decimal | None = field(metadata={'precision': DecimalPlaces.TWO})
-    timestamp: datetime
+    bpm: float
+    uc: float
+    timestamp: float
