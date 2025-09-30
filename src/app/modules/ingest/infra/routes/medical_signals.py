@@ -150,6 +150,7 @@ async def forwarder(out_client, payload: dict) -> None:
     # if out_client is None:
     #     return
     # await out_client.send_json(payload)
+    print('*', payload, datetime.datetime.now())
 
 
 def pad_samples(samples: list[Sample], fs: int) -> list[Sample]:
@@ -164,6 +165,9 @@ def pad_samples(samples: list[Sample], fs: int) -> list[Sample]:
     while len(result) < fs:
         ts_val = result[-1].ts if result else 0.0
         result.append(Sample(ts=ts_val, bpm=mean_bpm, uterus=mean_ut))
+
+    if len(result) > fs:
+        result = result[-fs:]
 
     return result
 
@@ -235,6 +239,7 @@ async def processing_loop(
                         }
                         await forwarder(out_client, payload)
                     last_value = data_with_fs_length[-1]
+                    print("======")
                 last_second_data = []
 
                 next_tick += 1.0
