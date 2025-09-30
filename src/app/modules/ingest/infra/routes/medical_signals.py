@@ -16,7 +16,7 @@ from app.modules.ingest.infra.queue import signal_queue
 
 router = APIRouter()
 
-RESULTS_SINK = os.getenv("INGEST_RESULTS_SINK", "console").lower()
+RESULTS_SINK = os.getenv("INGEST_RESULTS_SINK", "signal").lower()
 
 
 def json_dumps(obj: dict[str, Any]) -> str:
@@ -175,7 +175,7 @@ async def forwarder(payload: dict[str, float]) -> None:
     if RESULTS_SINK == "console":
         print(json_dumps(payload), datetime.datetime.now())
     elif RESULTS_SINK == "signal":
-        print(json_dumps(payload), datetime.datetime.now())
+        # print(json_dumps(payload), datetime.datetime.now())
         point = CardiotocographyPoint(
             bpm=payload["bpm"],
             uc=payload["uterus"],
@@ -240,14 +240,14 @@ async def processing_loop(
                     step = 1.0 / fs
                     for i, s in enumerate(data):
                         payload = {
-                            "type": "console",
+                            "type": "signal",
                             "timestamp": sec_start + i * step,
                             "bpm": s.bpm,
                             "uterus": s.uterus,
                         }
                         await forwarder(payload)
                     last_value = data[-1]
-                    print('============')
+                    # print('============')
 
                 last_second_data = []
                 next_tick += 1.0

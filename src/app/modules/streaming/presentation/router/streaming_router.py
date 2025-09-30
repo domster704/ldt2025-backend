@@ -1,3 +1,5 @@
+from dataclasses import asdict
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.modules.ingest.entities.ctg import CardiotocographyPoint
@@ -7,13 +9,14 @@ from app.modules.streaming.presentation.dto import CardiotocographyPointDTO
 streaming_router = APIRouter()
 
 
-@streaming_router.websocket("/")
+@streaming_router.websocket("")
 async def frontend_ws(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
             point: CardiotocographyPoint = await signal_queue.get()
-            dto = CardiotocographyPointDTO(**point.__dict__)
-            await websocket.send_text(dto.model_dump_json())
+            dto = CardiotocographyPointDTO(**asdict(point))
+            print(dto)
+            await websocket.send_json(dto.model_dump())
     except WebSocketDisconnect:
         pass
