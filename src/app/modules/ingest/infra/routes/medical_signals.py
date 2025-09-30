@@ -17,6 +17,7 @@ from app.modules.ingest.infra.queue import signal_queue
 router = APIRouter()
 
 RESULTS_SINK = os.getenv("INGEST_RESULTS_SINK", "signal").lower()
+FS = 5
 
 
 def json_dumps(obj: dict[str, Any]) -> str:
@@ -76,7 +77,7 @@ class SignalProcessor:
     - Добивку (padding) до заданного числа выборок fs.
     """
 
-    def __init__(self, fs: int = 5) -> None:
+    def __init__(self, fs: int = FS) -> None:
         """Создаёт обработчик сигналов.
 
         Args:
@@ -166,27 +167,21 @@ class SignalProcessor:
         return result[-self.fs:]
 
 
-async def forwarder(payload: dict[str, float]) -> None:
+async def forwarder(payload_list: list[CardiotocographyPoint]) -> None:
     """Отправляет данные в консоль или во внешний WebSocket.
 
     Args:
-        payload (dict[str, float]): Словарь данных для отправки.
+        payload_list (list[CardiotocographyPoint]): Массив данных для отправки.
     """
     if RESULTS_SINK == "console":
-        print(json_dumps(payload), datetime.datetime.now())
+        print(payload_list, datetime.datetime.now())
     elif RESULTS_SINK == "signal":
-        # print(json_dumps(payload), datetime.datetime.now())
-        point = CardiotocographyPoint(
-            bpm=payload["bpm"],
-            uc=payload["uterus"],
-            timestamp=payload["timestamp"],
-        )
-        await signal_queue.put(point)
+        await signal_queue.put(payload_list)
 
 
 async def processing_loop(
         queue: asyncio.Queue[Sample],
-        fs: int = 5,
+        fs: int = FS,
 ) -> None:
     """Основной цикл обработки сигналов.
 
@@ -236,16 +231,18 @@ async def processing_loop(
                     ]
 
                 if data:
+                    payload_list: list[CardiotocographyPoint] = []
+
                     sec_start = float(current_sec)
                     step = 1.0 / fs
                     for i, s in enumerate(data):
-                        payload = {
-                            "type": "signal",
-                            "timestamp": sec_start + i * step,
-                            "bpm": s.bpm,
-                            "uterus": s.uterus,
-                        }
-                        await forwarder(payload)
+                        payload = CardiotocographyPoint(
+                            timestamp=sec_start + i * step,
+                            bpm=s.bpm,
+                            uc=s.uterus,
+                        )
+                        payload_list.append(payload)
+                    await forwarder(payload_list)
                     last_value = data[-1]
                     # print('============')
 
