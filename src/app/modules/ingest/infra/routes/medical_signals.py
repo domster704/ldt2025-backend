@@ -2,9 +2,10 @@ import asyncio
 import contextlib
 import datetime
 import math
+import os
 from dataclasses import dataclass
 from statistics import mean
-from typing import Optional
+from typing import Any
 
 import aiohttp
 import orjson
@@ -14,76 +15,31 @@ from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 router = APIRouter()
 
 OUTBOUND_WS_URL = "ws://localhost:9000/ws/outbound"
-PROCESS_WINDOW_SEC = 1.0
-TICK_SEC = 1.0
-import os
-
 RESULTS_SINK = os.getenv("INGEST_RESULTS_SINK", "console").lower()
 
 
-class OutboundWSClient:
-    """Клиент для отправки данных во внешний WebSocket с авто-реконнектом."""
+def json_dumps(obj: dict[str, Any]) -> str:
+    """Сериализует словарь в JSON-строку.
 
-    def __init__(self, url: str, heartbeat: int = 20) -> None:
-        self._url = url
-        self._heartbeat = heartbeat
-        self._session: aiohttp.ClientSession | None = None
-        self._ws: aiohttp.ClientWebSocketResponse | None = None
-        self._lock = asyncio.Lock()
+    Args:
+        obj (dict[str, Any]): Python-словарь.
 
-    @property
-    def is_connected(self) -> bool:
-        return self._ws is not None and not self._ws.closed
-
-    async def connect(self) -> None:
-        async with self._lock:
-            if self.is_connected:
-                return
-            if self._session is None or self._session.closed:
-                self._session = aiohttp.ClientSession()
-            try:
-                self._ws = await self._session.ws_connect(
-                    self._url, heartbeat=self._heartbeat, autoping=True
-                )
-            except Exception:
-                self._ws = None
-
-    async def send_json(self, payload: dict) -> None:
-        """Отправка с одним автоматическим ретраем при разрыве соединения."""
-        if not self.is_connected:
-            await self.connect()
-        if not self.is_connected:
-            return
-        try:
-            assert self._ws is not None
-            await self._ws.send_str(_json_dumps(payload))
-        except Exception:
-            await self.connect()
-            if self.is_connected and self._ws is not None:
-                with contextlib.suppress(Exception):
-                    await self._ws.send_str(_json_dumps(payload))
-
-    async def close(self) -> None:
-        if self._ws:
-            with contextlib.suppress(Exception):
-                await self._ws.close()
-        if self._session:
-            with contextlib.suppress(Exception):
-                await self._session.close()
-
-
-@dataclass
-class Sample:
-    ts: float
-    bpm: float
-    uterus: float
-
-
-def _json_dumps(obj) -> str:
+    Returns:
+        str: JSON-представление объекта.
+    """
     return orjson.dumps(obj).decode()
 
 
-def _safe_float(value) -> Optional[float]:
+def safe_float(value: Any) -> float | None:
+    """Преобразует значение в float с защитой от ошибок.
+
+    Args:
+        value (Any): Входное значение.
+
+    Returns:
+        float | None: Преобразованное число или None,
+        если значение некорректное (NaN, Inf, None, строка с мусором).
+    """
     try:
         if value is None:
             return None
@@ -95,164 +51,305 @@ def _safe_float(value) -> Optional[float]:
         return None
 
 
-_last_values: dict[str, float] = {"bpm": None, "uterus": None}
-_last_second_avgs: dict[int, dict[str, float]] = {}
+@dataclass
+class Sample:
+    """Один измеренный сэмпл сигнала.
+
+    Attributes:
+        ts (float): Временная метка (секунды).
+        bpm (float): Значение сердцебиения.
+        uterus (float): Значение маточной активности.
+    """
+    ts: float
+    bpm: float
+    uterus: float
 
 
-def _parse_signal(msg: dict) -> Optional[Sample]:
-    if not isinstance(msg, dict):
-        return None
+class OutboundWSClient:
+    """Клиент для отправки данных во внешний WebSocket.
 
-    ts = _safe_float(msg.get("timestamp"))
-    bpm = _safe_float(msg.get("bpm"))
-    uterus = _safe_float(msg.get("uterus"))
+    Поддерживает:
+    - Автоматическое переподключение при обрыве соединения.
+    - Отправку JSON-сообщений с ретраями.
+    - Закрытие соединений и освобождение ресурсов.
 
-    if ts is None:
-        return None
+    Attributes:
+        _url (str): Адрес WebSocket-сервера.
+        _heartbeat (int): Интервал heartbeat.
+        _session (aiohttp.ClientSession | None): HTTP-сессия aiohttp.
+        _ws (aiohttp.ClientWebSocketResponse | None): Объект WebSocket.
+        _lock (asyncio.Lock): Блокировка для потокобезопасного подключения.
+    """
 
-    sec = int(ts)
+    def __init__(self, url: str, heartbeat: int = 20) -> None:
+        """Создаёт клиента.
 
-    if bpm is None:
-        if sec in _last_second_avgs and _last_second_avgs[sec]["bpm"] is not None:
-            bpm = _last_second_avgs[sec]["bpm"]
-        elif _last_values["bpm"] is not None:
-            bpm = _last_values["bpm"]
+        Args:
+            url (str): URL WebSocket-сервера.
+            heartbeat (int, optional): Интервал heartbeat в секундах. По умолчанию 20.
+        """
+        self._url = url
+        self._heartbeat = heartbeat
+        self._session: aiohttp.ClientSession | None = None
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._lock = asyncio.Lock()
 
-    if uterus is None:
-        if sec in _last_second_avgs and _last_second_avgs[sec]["uterus"] is not None:
-            uterus = _last_second_avgs[sec]["uterus"]
-        elif _last_values["uterus"] is not None:
-            uterus = _last_values["uterus"]
+    @property
+    def is_connected(self) -> bool:
+        """Проверяет, установлено ли соединение.
 
-    if bpm is None or uterus is None:
-        return None
+        Returns:
+            bool: True если соединение активно, иначе False.
+        """
+        return self._ws is not None and not self._ws.closed
 
-    sample = Sample(ts=ts, bpm=bpm, uterus=uterus)
+    async def connect(self) -> None:
+        """Устанавливает соединение с WebSocket."""
+        async with self._lock:
+            if self.is_connected:
+                return
+            if not self._session or self._session.closed:
+                self._session = aiohttp.ClientSession()
+            try:
+                self._ws = await self._session.ws_connect(
+                    self._url, heartbeat=self._heartbeat, autoping=True
+                )
+            except Exception:
+                self._ws = None
 
-    _last_values["bpm"] = bpm
-    _last_values["uterus"] = uterus
+    async def send_json(self, payload: dict[str, Any]) -> None:
+        """Отправляет JSON-сообщение в WebSocket.
 
-    if sec not in _last_second_avgs:
-        _last_second_avgs[sec] = {"bpm": bpm, "uterus": uterus}
-    else:
-        prev_bpm = _last_second_avgs[sec]["bpm"]
-        prev_ut = _last_second_avgs[sec]["uterus"]
-        _last_second_avgs[sec]["bpm"] = (prev_bpm + bpm) / 2 if prev_bpm is not None else bpm
-        _last_second_avgs[sec]["uterus"] = (prev_ut + uterus) / 2 if prev_ut is not None else uterus
+        Если соединение разорвано, пытается переподключиться.
 
-    return sample
+        Args:
+            payload (dict[str, Any]): Словарь для отправки.
+        """
+        if not self.is_connected:
+            await self.connect()
+        if not self.is_connected:
+            return
+        try:
+            assert self._ws is not None
+            await self._ws.send_str(json_dumps(payload))
+        except Exception:
+            await self.connect()
+            if self.is_connected and self._ws is not None:
+                with contextlib.suppress(Exception):
+                    await self._ws.send_str(json_dumps(payload))
+
+    async def close(self) -> None:
+        """Закрывает соединение и освобождает ресурсы."""
+        if self._ws:
+            with contextlib.suppress(Exception):
+                await self._ws.close()
+        if self._session:
+            with contextlib.suppress(Exception):
+                await self._session.close()
 
 
-async def forwarder(out_client, payload: dict) -> None:
+class SignalProcessor:
+    """Обрабатывает входные сигналы, восстанавливает пропущенные значения.
+
+    Поддерживает:
+    - Парсинг входных сообщений.
+    - Хранение последних известных значений.
+    - Усреднение значений внутри секунды.
+    - Добивку (padding) до заданного числа выборок fs.
+    """
+
+    def __init__(self, fs: int = 5) -> None:
+        """Создаёт обработчик сигналов.
+
+        Args:
+            fs (int, optional): Количество выборок на секунду. По умолчанию 5.
+        """
+        self.fs = fs
+        self._last_values: dict[str, float | None] = {"bpm": None, "uterus": None}
+        self._second_avgs: dict[int, dict[str, float]] = {}
+
+    def parse(self, msg: dict[str, Any]) -> Sample | None:
+        """Парсит сообщение и заполняет пропуски последними значениями.
+
+        Args:
+            msg (dict[str, Any]): Входное сообщение от клиента.
+
+        Returns:
+            Sample | None: Объект Sample или None, если сообщение некорректное.
+        """
+        ts = safe_float(msg.get("timestamp"))
+        bpm = safe_float(msg.get("bpm"))
+        uterus = safe_float(msg.get("uterus"))
+
+        if ts is None:
+            return None
+
+        sec = int(ts)
+
+        bpm = bpm or self._get_fallback(sec, "bpm")
+        uterus = uterus or self._get_fallback(sec, "uterus")
+
+        if bpm is None or uterus is None:
+            return None
+
+        sample = Sample(ts=ts, bpm=bpm, uterus=uterus)
+
+        self._last_values.update({"bpm": bpm, "uterus": uterus})
+        self._update_second_avg(sec, bpm, uterus)
+
+        return sample
+
+    def _get_fallback(self, sec: int, key: str) -> float | None:
+        """Возвращает запасное значение, если текущее отсутствует.
+
+        Args:
+            sec (int): Секунда, к которой относится выборка.
+            key (str): Имя параметра ("bpm" или "uterus").
+
+        Returns:
+            float | None: Последнее известное значение или None.
+        """
+        if sec in self._second_avgs and self._second_avgs[sec][key] is not None:
+            return self._second_avgs[sec][key]
+        return self._last_values[key]
+
+    def _update_second_avg(self, sec: int, bpm: float, uterus: float) -> None:
+        """Обновляет усреднённые значения для данной секунды.
+
+        Args:
+            sec (int): Секунда.
+            bpm (float): Сердцебиение.
+            uterus (float): Маточная активность.
+        """
+        if sec not in self._second_avgs:
+            self._second_avgs[sec] = {"bpm": bpm, "uterus": uterus}
+        else:
+            self._second_avgs[sec]["bpm"] = mean([self._second_avgs[sec]["bpm"], bpm])
+            self._second_avgs[sec]["uterus"] = mean([self._second_avgs[sec]["uterus"], uterus])
+
+    def pad_samples(self, samples: list[Sample]) -> list[Sample]:
+        """Дополняет список до fs выборок усреднением.
+
+        Args:
+            samples (list[Sample]): Список сэмплов.
+
+        Returns:
+            list[Sample]: Список длиной fs.
+        """
+        if not samples:
+            return []
+
+        mean_bpm = mean(s.bpm for s in samples)
+        mean_ut = mean(s.uterus for s in samples)
+
+        result = samples.copy()
+        while len(result) < self.fs:
+            result.append(Sample(ts=result[-1].ts, bpm=mean_bpm, uterus=mean_ut))
+        return result[-self.fs:]
+
+
+async def forwarder(payload: dict[str, Any], out_client: OutboundWSClient | None) -> None:
+    """Отправляет данные в консоль или во внешний WebSocket.
+
+    Args:
+        payload (dict[str, Any]): Словарь данных для отправки.
+        out_client (OutboundWSClient | None): Клиент для WebSocket.
+    """
     if RESULTS_SINK == "console":
-        print(_json_dumps(payload), datetime.datetime.now())
-        return
-    # if out_client is None:
-    #     return
-    # await out_client.send_json(payload)
-    print('*', payload, datetime.datetime.now())
-
-
-def pad_samples(samples: list[Sample], fs: int) -> list[Sample]:
-    if not samples:
-        return []
-
-    mean_bpm = mean(s.bpm for s in samples)
-    mean_ut = mean(s.uterus for s in samples)
-
-    result = samples.copy()
-
-    while len(result) < fs:
-        ts_val = result[-1].ts if result else 0.0
-        result.append(Sample(ts=ts_val, bpm=mean_bpm, uterus=mean_ut))
-
-    if len(result) > fs:
-        result = result[-fs:]
-
-    return result
+        print(json_dumps(payload), datetime.datetime.now())
+    elif out_client:
+        await out_client.send_json(payload)
 
 
 async def processing_loop(
         queue: asyncio.Queue[Sample],
-        out_client: Optional["OutboundWSClient"],
-        fs: int = 5
-):
-    """
-    Раз в секунду отдаёт одно значение:
-    - если были новые сэмплы → берём последний в этой секунде
-    - если сэмплов не было → берём последнее известное значение
-    timestamp = секунда данных, а не монотоничное время
-    """
-    loop = asyncio.get_running_loop()
-    start_mono = loop.time()
-    start_ts: Optional[int] = None
+        out_client: OutboundWSClient | None,
+        fs: int = 5,
+) -> None:
+    """Основной цикл обработки сигналов.
 
+    Работает строго раз в секунду (по системному времени), выдаёт fs выборок.
+    Если данных нет, повторяет последнее значение.
+
+    Args:
+        queue (asyncio.Queue[Sample]): Очередь входных сэмплов.
+        out_client (OutboundWSClient | None): WebSocket-клиент для передачи данных.
+        fs (int, optional): Количество выборок на секунду. По умолчанию 5.
+    """
+    processor = SignalProcessor(fs)
+    loop = asyncio.get_running_loop()
+
+    start_mono = loop.time()
+    start_ts: int | None = None
     next_tick = start_mono
+    tick_index = 0
 
     last_second_data: list[Sample] = []
-    last_second: int | None = None
-    last_value: Optional[Sample] = None
+    last_value: Sample | None = None
 
     while True:
         try:
             timeout = max(0, next_tick - loop.time())
             try:
                 sample: Sample = await asyncio.wait_for(queue.get(), timeout)
-                if last_second is not None and int(sample.ts) > last_second:
-                    last_second_data = []
-
-                last_second_data.append(sample)
-                last_second = int(sample.ts)
-
                 if start_ts is None:
                     start_ts = int(sample.ts)
+                last_second_data.append(sample)
             except asyncio.TimeoutError:
                 if start_ts is None:
                     next_tick += 1.0
                     continue
 
-                elapsed = int(loop.time() - start_mono)
-                current_sec = start_ts + elapsed
+                current_sec = start_ts + tick_index
+                tick_index += 1
 
-                data_with_fs_length = pad_samples(last_second_data, fs)
-                if not data_with_fs_length and last_value is not None:
+                data: list[Sample] = processor.pad_samples(last_second_data)
+                if not data and last_value:
                     sec_start = float(current_sec)
                     step = 1.0 / fs
-                    data_with_fs_length = [
+                    data = [
                         Sample(ts=sec_start + i * step,
                                bpm=last_value.bpm,
                                uterus=last_value.uterus)
                         for i in range(fs)
                     ]
 
-                if data_with_fs_length:
+                if data:
                     sec_start = float(current_sec)
                     step = 1.0 / fs
-                    for i, s in enumerate(data_with_fs_length):
+                    for i, s in enumerate(data):
                         payload = {
                             "type": "console",
                             "timestamp": sec_start + i * step,
-                            "value": {
-                                "bpm": s.bpm,
-                                "uterus": s.uterus,
-                            },
+                            "value": {"bpm": s.bpm, "uterus": s.uterus},
                         }
-                        await forwarder(out_client, payload)
-                    last_value = data_with_fs_length[-1]
-                    print("======")
-                last_second_data = []
+                        await forwarder(payload, out_client)
+                    last_value = data[-1]
+                    print('============')
 
+                last_second_data = []
                 next_tick += 1.0
+
         except asyncio.CancelledError:
             break
 
 
 @router.websocket("/input_signal")
-async def ingest_medical_signals(websocket: WebSocket):
+async def ingest_medical_signals(websocket: WebSocket) -> None:
+    """WebSocket-эндпоинт для приёма медицинских сигналов.
+
+    Принимает сообщения вида:
+        {"type": "signal", "timestamp": <float>, "bpm": <float>, "uterus": <float>}
+        {"type": "end"}  -- завершение сессии.
+
+    Args:
+        websocket (WebSocket): WebSocket-соединение от клиента.
+    """
     await websocket.accept()
-    processing_task: asyncio.Task | None = None
-    out_client: Optional[OutboundWSClient] = None
     queue: asyncio.Queue[Sample] = asyncio.Queue()
+    processing_task: asyncio.Task | None = None
+    out_client: OutboundWSClient | None = None
+    processor = SignalProcessor()
 
     try:
         if RESULTS_SINK == "ws":
@@ -268,22 +365,16 @@ async def ingest_medical_signals(websocket: WebSocket):
             except Exception as e:
                 continue
 
-            mtype = msg.get("type")
-            if mtype == "end":
-                if RESULTS_SINK == "console":
-                    print(_json_dumps({"type": "end"}))
-                elif out_client is not None:
-                    await out_client.send_json({"type": "end"})
+            if msg.get("type") == "end":
+                await forwarder({"type": "end"}, out_client)
                 break
 
-            if mtype != "signal":
+            if msg.get("type") != "signal":
                 continue
 
-            sample: Sample | None = _parse_signal(msg)
-            if sample is None:
-                continue
-
-            await queue.put(sample)
+            sample = processor.parse(msg)
+            if sample:
+                await queue.put(sample)
 
     except WebSocketDisconnect:
         pass
@@ -292,7 +383,7 @@ async def ingest_medical_signals(websocket: WebSocket):
             processing_task.cancel()
             with contextlib.suppress(Exception):
                 await processing_task
-        if out_client is not None:
+        if out_client:
             await out_client.close()
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
