@@ -13,7 +13,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 router = APIRouter()
 
 OUTBOUND_WS_URL = "ws://localhost:9000/ws/outbound"
-PROCESS_WINDOW_SEC = 3.0
+PROCESS_WINDOW_SEC = 1.0
 TICK_SEC = 1.0
 import os
 RESULTS_SINK = os.getenv("INGEST_RESULTS_SINK", "console").lower()  # "ws" | "console"
@@ -149,154 +149,79 @@ def _parse_signal(msg: dict) -> Optional[Sample]:
     return Sample(ts=ts, bpm=bpm, uterus=uterus)
 
 
-def run_algorithm(last3: list[Sample]) -> dict:
-    """
-    Ресемплинг последних 3 секунд и возврат ровно последней секунды
-    для обеих компонент (bpm, uterus) на равномерной сетке fs=6 Гц.
-
-    Поведение эквивалентно StreamResampler:
-      - равномерная сетка на всём окне (3 сек)
-      - затирание больших пропусков (> 3.0 сек) как разрывов
-      - линейная интерполяция пропусков; края заполняются ближайшим значением
-      - возврат только последней секунды (полуинтервал [floor(t1-1), floor(t1-1)+1))
-    """
-    if not last3:
+def run_algorithm(last1sec: list[Sample]) -> dict:
+    if not last1sec:
         return {}
 
-    # параметры ресемплера
-    fs = 6.0
-    gap_sec = 3.0
-    buffer_sec = 3.0  # соответствует входу last3
-
-    # Подготовка исходных массивов времени и значений
-    # Уже гарантированно содержат только последние 3 секунды
-    times = [s.ts for s in last3]
-    if len(times) < 2:
-        return {}
-    # Сортировка на всякий случай по времени
-    paired = sorted(((s.ts, s.bpm, s.uterus) for s in last3), key=lambda x: x[0])
-    t = [p[0] for p in paired]
-    bpm_vals = [p[1] for p in paired]
-    uter_vals = [p[2] for p in paired]
-
-    t0, t1 = t[0], t[-1]
-    if math.floor(t1) - math.floor(t0) < buffer_sec:
-        # окно ещё меньше 3 секунд – ждём
-        return {}
-
-    # Равномерная сетка для всего окна [t0, t1) шаг 1/fs
+    # сортируем по времени
+    points = sorted(last1sec, key=lambda s: s.ts)
+    max_ts = points[-1].ts
+    second_start = math.floor(max_ts - 1.0)
+    second_end = second_start + 1.0
+    fs = 5.0
     step = 1.0 / fs
-    tt: list[float] = []
-    cur = t0
-    # Избегаем накопления ошибок float: ограничим верхнюю границу t1 - epsilon
-    # но нам нужно покрыть почти весь полуинтервал до t1
-    while cur < t1 - 1e-9:
-        tt.append(cur)
+    ts_target: list[float] = []
+    cur = second_start
+    while cur < second_end - 1e-9:
+        ts_target.append(cur)
         cur += step
 
-    # Линейная интерполяция по известным точкам (аналог np.interp с NaN снаружи)
-    def interp_series(t_known: list[float], v_known: list[float], t_query: list[float]) -> list[Optional[float]]:
-        res: list[Optional[float]] = []
-        n = len(t_known)
-        i = 0
-        for tq in t_query:
-            # продвигаем левый индекс до сегмента, где t[i] <= tq <= t[i+1]
-            while i + 1 < n and t_known[i + 1] < tq:
-                i += 1
-            if tq < t_known[0] or tq > t_known[-1]:
-                res.append(None)
-            elif i + 1 < n and t_known[i] <= tq <= t_known[i + 1]:
-                x0, y0 = t_known[i], v_known[i]
-                x1, y1 = t_known[i + 1], v_known[i + 1]
-                if x1 == x0:
-                    res.append(float(y0))
-                else:
-                    w = (tq - x0) / (x1 - x0)
-                    res.append(float(y0 + (y1 - y0) * w))
+    def compute_stream(values_extractor) -> tuple[list[Optional[float]], Optional[float]]:
+        # отбираем точки в текущей секунде
+        t_in: list[float] = []
+        v_in: list[float] = []
+        for s in points:
+            if s.ts >= second_start and s.ts < second_end:
+                t_in.append(s.ts)
+                v_in.append(float(values_extractor(s)))
+
+        # последнее известное значение до секунды
+        last_before_val: Optional[float] = None
+        for s in points:
+            if s.ts < second_start:
+                last_before_val = float(values_extractor(s))
             else:
-                # точка совпадает с правой границей последнего сегмента
-                res.append(float(v_known[-1]))
-        return res
+                break
 
-    vv_bpm = interp_series(t, bpm_vals, tt)
-    vv_uter = interp_series(t, uter_vals, tt)
-
-    # Затираем большие пропуски: точки между t[i] и t[i+1], если разрыв > gap_sec
-    gaps = [t[i + 1] - t[i] for i in range(len(t) - 1)]
-    for i, g in enumerate(gaps):
-        if g > gap_sec:
-            left, right = t[i], t[i + 1]
-            for idx, tq in enumerate(tt):
-                if left < tq < right:
-                    vv_bpm[idx] = None
-                    vv_uter[idx] = None
-
-    # Интерполяция пропусков и заполнение по краям ближайшими значениями
-    def fill_gaps(values: list[Optional[float]]) -> list[float]:
-        n = len(values)
-        if n == 0:
-            return []
-        # Найти ближайшие слева/справа валидные значения для каждого индекса
-        left_idx = [-1] * n
-        last = -1
-        for i in range(n):
-            if values[i] is not None:
-                last = i
-            left_idx[i] = last
-        right_idx = [-1] * n
-        last = -1
-        for i in range(n - 1, -1, -1):
-            if values[i] is not None:
-                last = i
-            right_idx[i] = last
-
-        out: list[float] = [0.0] * n
-        for i in range(n):
-            v = values[i]
-            if v is not None:
-                out[i] = float(v)
-                continue
-            li = left_idx[i]
-            ri = right_idx[i]
-            if li != -1 and ri != -1 and li != ri:
-                # линейная интерполяция между двумя опорными точками
-                x0, y0 = tt[li], float(values[li])  # type: ignore[arg-type]
-                x1, y1 = tt[ri], float(values[ri])  # type: ignore[arg-type]
-                if x1 == x0:
-                    out[i] = y0
+        if t_in:
+            # интерполяция с удержанием краёв ближайшим значением
+            res: list[Optional[float]] = []
+            n = len(t_in)
+            i = 0
+            for tq in ts_target:
+                while i + 1 < n and t_in[i + 1] < tq:
+                    i += 1
+                if tq < t_in[0]:
+                    res.append(float(v_in[0]))
+                elif tq > t_in[-1]:
+                    res.append(float(v_in[-1]))
+                elif i + 1 < n and t_in[i] <= tq <= t_in[i + 1]:
+                    x0, y0 = t_in[i], v_in[i]
+                    x1, y1 = t_in[i + 1], v_in[i + 1]
+                    if x1 == x0:
+                        res.append(float(y0))
+                    else:
+                        w = (tq - x0) / (x1 - x0)
+                        res.append(float(y0 + (y1 - y0) * w))
                 else:
-                    w = (tt[i] - x0) / (x1 - x0)
-                    out[i] = y0 + (y1 - y0) * w
-            elif li != -1:
-                out[i] = float(values[li])  # ближайшее слева
-            elif ri != -1:
-                out[i] = float(values[ri])  # ближайшее справа
-            else:
-                out[i] = 0.0
-        return out
+                    res.append(float(v_in[-1]))
+            last_value = None if not res else float(res[-1])
+            return res, last_value
+        else:
+            if last_before_val is not None:
+                return [last_before_val for _ in ts_target], last_before_val
+            return [None for _ in ts_target], None
 
-    vvf_bpm = fill_gaps(vv_bpm)
-    vvf_uter = fill_gaps(vv_uter)
-
-    # Оставляем только последнюю секунду
-    last_start = math.floor(t1 - 1.0)
-    last_end = last_start + 1.0
-    mask_idx: list[int] = [i for i, tq in enumerate(tt) if (tq >= last_start and tq < last_end)]
-
-    t_last = [tt[i] for i in mask_idx]
-    bpm_raw_last = [vv_bpm[i] if vv_bpm[i] is not None else None for i in mask_idx]
-    bpm_filled_last = [vvf_bpm[i] for i in mask_idx]
-    uter_raw_last = [vv_uter[i] if vv_uter[i] is not None else None for i in mask_idx]
-    uter_filled_last = [vvf_uter[i] for i in mask_idx]
+    bpm_vals, bpm_last = compute_stream(lambda s: s.bpm)
+    uterus_vals, uterus_last = compute_stream(lambda s: s.uterus)
 
     return {
         "fs": fs,
-        "t": t_last,
-        "bpm_raw": bpm_raw_last,
-        "bpm": bpm_filled_last,
-        "uterus_raw": uter_raw_last,
-        "uterus": uter_filled_last,
-        "samples_3s": len(last3),
+        "t": ts_target,
+        "bpm": bpm_vals,
+        "uterus": uterus_vals,
+        "bpm_last_value": bpm_last,
+        "uterus_last_value": uterus_last,
     }
 
 
@@ -323,7 +248,8 @@ async def processing_loop(
     - первый запуск через 3 сек с момента первого сигнала (по монотоних часам),
     - далее каждые 1 сек.
     """
-    next_tick = start_monotonic + PROCESS_WINDOW_SEC
+    # Обрабатываем каждую секунду без стартовой задержки на 3 секунды
+    next_tick = start_monotonic + TICK_SEC
     now = asyncio.get_running_loop().time()
     if now < next_tick:
         await asyncio.sleep(next_tick - now)
@@ -336,9 +262,10 @@ async def processing_loop(
                 current_ts = first_signal_wall + (asyncio.get_running_loop().time() - start_monotonic)
 
             _prune_window(window, current_ts, PROCESS_WINDOW_SEC)
-            last3, last1 = _split_last_second(window, current_ts)
+            _last3_unused, last1 = _split_last_second(window, current_ts)
 
-            alg_out = run_algorithm(last3)
+            # Алгоритм работает по последней секунде
+            alg_out = run_algorithm(last1)
 
             # сначала сеть (real-time важнее всего)
             out_payload = {
