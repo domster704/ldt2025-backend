@@ -1,13 +1,14 @@
 import asyncio
 import contextlib
-from collections import deque
+import datetime
+import math
 from dataclasses import dataclass
-from typing import Deque, Optional
+from statistics import mean
+from typing import Optional
 
 import aiohttp
-import math
-from fastapi import APIRouter
 import orjson
+from fastapi import APIRouter
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 router = APIRouter()
@@ -16,66 +17,60 @@ OUTBOUND_WS_URL = "ws://localhost:9000/ws/outbound"
 PROCESS_WINDOW_SEC = 1.0
 TICK_SEC = 1.0
 import os
-RESULTS_SINK = os.getenv("INGEST_RESULTS_SINK", "console").lower()  # "ws" | "console"
+
+RESULTS_SINK = os.getenv("INGEST_RESULTS_SINK", "console").lower()
 
 
 class OutboundWSClient:
-    """Minimal auto-reconnecting client for outbound ML server."""
+    """Клиент для отправки данных во внешний WebSocket с авто-реконнектом."""
 
-    def __init__(self, url: str, *, heartbeat: int = 20) -> None:
+    def __init__(self, url: str, heartbeat: int = 20) -> None:
         self._url = url
         self._heartbeat = heartbeat
-        self._session: Optional[aiohttp.ClientSession] = None
-        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
-        self._connect_lock = asyncio.Lock()
+        self._session: aiohttp.ClientSession | None = None
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
         return self._ws is not None and not self._ws.closed
 
-    async def _ensure_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
-
     async def connect(self) -> None:
-        async with self._connect_lock:
+        async with self._lock:
             if self.is_connected:
                 return
-            session = await self._ensure_session()
+            if self._session is None or self._session.closed:
+                self._session = aiohttp.ClientSession()
             try:
-                self._ws = await session.ws_connect(self._url, heartbeat=self._heartbeat, autoping=True)
+                self._ws = await self._session.ws_connect(
+                    self._url, heartbeat=self._heartbeat, autoping=True
+                )
             except Exception:
                 self._ws = None
 
-    async def ensure_connected(self) -> None:
-        if self.is_connected:
-            return
-        await self.connect()
-
     async def send_json(self, payload: dict) -> None:
-        # Best effort send: try once, if not connected attempt reconnect and retry once
+        """Отправка с одним автоматическим ретраем при разрыве соединения."""
         if not self.is_connected:
             await self.connect()
         if not self.is_connected:
             return
-        assert self._ws is not None
         try:
+            assert self._ws is not None
             await self._ws.send_str(_json_dumps(payload))
         except Exception:
-            # try one reconnect and resend
             await self.connect()
-            if self.is_connected and self._ws is not None and not self._ws.closed:
+            if self.is_connected and self._ws is not None:
                 with contextlib.suppress(Exception):
                     await self._ws.send_str(_json_dumps(payload))
 
     async def close(self) -> None:
-        if self._ws is not None and not self._ws.closed:
+        if self._ws:
             with contextlib.suppress(Exception):
                 await self._ws.close()
-        if self._session is not None and not self._session.closed:
+        if self._session:
             with contextlib.suppress(Exception):
                 await self._session.close()
+
 
 @dataclass
 class Sample:
@@ -86,39 +81,6 @@ class Sample:
 
 def _json_dumps(obj) -> str:
     return orjson.dumps(obj).decode()
-
-
-def _prune_window(win: Deque[Sample], now_ts: float, span: float) -> None:
-    bound = now_ts - span
-    while win and win[0].ts < bound:
-        win.popleft()
-
-
-def _split_last_second(win: Deque[Sample], now_ts: float) -> tuple[list[Sample], list[Sample]]:
-    """
-    Возвращает (last3sec_samples, last1sec_samples) относительно now_ts.
-    """
-    last3: list[Sample] = []
-    last1: list[Sample] = []
-    low3 = now_ts - PROCESS_WINDOW_SEC
-    low1 = now_ts - 1.0
-    for s in win:
-        if s.ts >= low3:
-            last3.append(s)
-            if s.ts >= low1:
-                last1.append(s)
-    return last3, last1
-
-
-def _median(nums: list[float]) -> float | None:
-    if not nums:
-        return None
-    s = sorted(nums)
-    n = len(s)
-    m = n // 2
-    if n % 2:
-        return float(s[m])
-    return (s[m - 1] + s[m]) / 2.0
 
 
 def _safe_float(value) -> Optional[float]:
@@ -133,175 +95,172 @@ def _safe_float(value) -> Optional[float]:
         return None
 
 
+_last_values: dict[str, float] = {"bpm": None, "uterus": None}
+_last_second_avgs: dict[int, dict[str, float]] = {}
+
+
 def _parse_signal(msg: dict) -> Optional[Sample]:
     if not isinstance(msg, dict):
         return None
+
     ts = _safe_float(msg.get("timestamp"))
     bpm = _safe_float(msg.get("bpm"))
     uterus = _safe_float(msg.get("uterus"))
-    if ts is None or bpm is None or uterus is None:
+
+    if ts is None:
         return None
-    # Basic sanity limits to drop obvious outliers/noise
-    if not (0 <= bpm <= 250):
+
+    sec = int(ts)
+
+    if bpm is None:
+        if sec in _last_second_avgs and _last_second_avgs[sec]["bpm"] is not None:
+            bpm = _last_second_avgs[sec]["bpm"]
+        elif _last_values["bpm"] is not None:
+            bpm = _last_values["bpm"]
+
+    if uterus is None:
+        if sec in _last_second_avgs and _last_second_avgs[sec]["uterus"] is not None:
+            uterus = _last_second_avgs[sec]["uterus"]
+        elif _last_values["uterus"] is not None:
+            uterus = _last_values["uterus"]
+
+    if bpm is None or uterus is None:
         return None
-    if not (0 <= uterus <= 300):
-        return None
-    return Sample(ts=ts, bpm=bpm, uterus=uterus)
+
+    sample = Sample(ts=ts, bpm=bpm, uterus=uterus)
+
+    _last_values["bpm"] = bpm
+    _last_values["uterus"] = uterus
+
+    if sec not in _last_second_avgs:
+        _last_second_avgs[sec] = {"bpm": bpm, "uterus": uterus}
+    else:
+        prev_bpm = _last_second_avgs[sec]["bpm"]
+        prev_ut = _last_second_avgs[sec]["uterus"]
+        _last_second_avgs[sec]["bpm"] = (prev_bpm + bpm) / 2 if prev_bpm is not None else bpm
+        _last_second_avgs[sec]["uterus"] = (prev_ut + uterus) / 2 if prev_ut is not None else uterus
+
+    return sample
 
 
-def run_algorithm(last1sec: list[Sample]) -> dict:
-    if not last1sec:
-        return {}
-
-    # сортируем по времени
-    points = sorted(last1sec, key=lambda s: s.ts)
-    max_ts = points[-1].ts
-    second_start = math.floor(max_ts - 1.0)
-    second_end = second_start + 1.0
-    fs = 5.0
-    step = 1.0 / fs
-    ts_target: list[float] = []
-    cur = second_start
-    while cur < second_end - 1e-9:
-        ts_target.append(cur)
-        cur += step
-
-    def compute_stream(values_extractor) -> tuple[list[Optional[float]], Optional[float]]:
-        # отбираем точки в текущей секунде
-        t_in: list[float] = []
-        v_in: list[float] = []
-        for s in points:
-            if s.ts >= second_start and s.ts < second_end:
-                t_in.append(s.ts)
-                v_in.append(float(values_extractor(s)))
-
-        # последнее известное значение до секунды
-        last_before_val: Optional[float] = None
-        for s in points:
-            if s.ts < second_start:
-                last_before_val = float(values_extractor(s))
-            else:
-                break
-
-        if t_in:
-            # интерполяция с удержанием краёв ближайшим значением
-            res: list[Optional[float]] = []
-            n = len(t_in)
-            i = 0
-            for tq in ts_target:
-                while i + 1 < n and t_in[i + 1] < tq:
-                    i += 1
-                if tq < t_in[0]:
-                    res.append(float(v_in[0]))
-                elif tq > t_in[-1]:
-                    res.append(float(v_in[-1]))
-                elif i + 1 < n and t_in[i] <= tq <= t_in[i + 1]:
-                    x0, y0 = t_in[i], v_in[i]
-                    x1, y1 = t_in[i + 1], v_in[i + 1]
-                    if x1 == x0:
-                        res.append(float(y0))
-                    else:
-                        w = (tq - x0) / (x1 - x0)
-                        res.append(float(y0 + (y1 - y0) * w))
-                else:
-                    res.append(float(v_in[-1]))
-            last_value = None if not res else float(res[-1])
-            return res, last_value
-        else:
-            if last_before_val is not None:
-                return [last_before_val for _ in ts_target], last_before_val
-            return [None for _ in ts_target], None
-
-    bpm_vals, bpm_last = compute_stream(lambda s: s.bpm)
-    uterus_vals, uterus_last = compute_stream(lambda s: s.uterus)
-
-    return {
-        "fs": fs,
-        "t": ts_target,
-        "bpm": bpm_vals,
-        "uterus": uterus_vals,
-        "bpm_last_value": bpm_last,
-        "uterus_last_value": uterus_last,
-    }
-
-
-async def forwarder(out_client: Optional[OutboundWSClient], payload: dict) -> None:
-    """
-    Без зависимостей от состояния приложения – используем авто-реконнект клиента.
-    """
+async def forwarder(out_client, payload: dict) -> None:
     if RESULTS_SINK == "console":
-        print(_json_dumps(payload))
+        print(_json_dumps(payload), datetime.datetime.now())
         return
-    if out_client is None:
-        return
-    await out_client.send_json(payload)
+    # if out_client is None:
+    #     return
+    # await out_client.send_json(payload)
+
+
+def pad_samples(samples: list[Sample], fs: int) -> list[Sample]:
+    if not samples:
+        return []
+
+    mean_bpm = mean(s.bpm for s in samples)
+    mean_ut = mean(s.uterus for s in samples)
+
+    result = samples.copy()
+
+    while len(result) < fs:
+        ts_val = result[-1].ts if result else 0.0
+        result.append(Sample(ts=ts_val, bpm=mean_bpm, uterus=mean_ut))
+
+    return result
 
 
 async def processing_loop(
-    window: Deque[Sample],
-    start_monotonic: float,
-    out_client: Optional[OutboundWSClient],
-    first_signal_wall: float,
+        queue: asyncio.Queue[Sample],
+        out_client: Optional["OutboundWSClient"],
+        fs: int = 5
 ):
     """
-    Периодический тикер:
-    - первый запуск через 3 сек с момента первого сигнала (по монотоних часам),
-    - далее каждые 1 сек.
+    Раз в секунду отдаёт одно значение:
+    - если были новые сэмплы → берём последний в этой секунде
+    - если сэмплов не было → берём последнее известное значение
+    timestamp = секунда данных, а не монотоничное время
     """
-    # Обрабатываем каждую секунду без стартовой задержки на 3 секунды
-    next_tick = start_monotonic + TICK_SEC
-    now = asyncio.get_running_loop().time()
-    if now < next_tick:
-        await asyncio.sleep(next_tick - now)
+    loop = asyncio.get_running_loop()
+    start_mono = loop.time()
+    start_ts: Optional[int] = None
+
+    next_tick = start_mono
+
+    last_second_data: list[Sample] = []
+    last_second: int | None = None
+    last_value: Optional[Sample] = None
 
     while True:
         try:
-            if window:
-                current_ts = max(s.ts for s in window)
-            else:
-                current_ts = first_signal_wall + (asyncio.get_running_loop().time() - start_monotonic)
+            timeout = max(0, next_tick - loop.time())
+            try:
+                sample: Sample = await asyncio.wait_for(queue.get(), timeout)
+                if last_second is not None and int(sample.ts) > last_second:
+                    last_second_data = []
 
-            _prune_window(window, current_ts, PROCESS_WINDOW_SEC)
-            _last3_unused, last1 = _split_last_second(window, current_ts)
+                last_second_data.append(sample)
+                last_second = int(sample.ts)
 
-            # Алгоритм работает по последней секунде
-            alg_out = run_algorithm(last1)
+                if start_ts is None:
+                    start_ts = int(sample.ts)
+            except asyncio.TimeoutError:
+                if start_ts is None:
+                    next_tick += 1.0
+                    continue
 
-            # сначала сеть (real-time важнее всего)
-            out_payload = {
-                "type": "result",
-                "timestamp": current_ts,
-                "second_range": [current_ts - 1.0, current_ts],
-                "count_last_sec": len(last1),
-                "algo": alg_out,
-            }
-            await forwarder(out_client, out_payload)
+                elapsed = int(loop.time() - start_mono)
+                current_sec = start_ts + elapsed
 
-            await asyncio.sleep(TICK_SEC)
+                data_with_fs_length = pad_samples(last_second_data, fs)
+                if not data_with_fs_length and last_value is not None:
+                    sec_start = float(current_sec)
+                    step = 1.0 / fs
+                    data_with_fs_length = [
+                        Sample(ts=sec_start + i * step,
+                               bpm=last_value.bpm,
+                               uterus=last_value.uterus)
+                        for i in range(fs)
+                    ]
+
+                if data_with_fs_length:
+                    sec_start = float(current_sec)
+                    step = 1.0 / fs
+                    for i, s in enumerate(data_with_fs_length):
+                        payload = {
+                            "type": "console",
+                            "timestamp": sec_start + i * step,
+                            "value": {
+                                "bpm": s.bpm,
+                                "uterus": s.uterus,
+                            },
+                        }
+                        await forwarder(out_client, payload)
+                    last_value = data_with_fs_length[-1]
+                last_second_data = []
+
+                next_tick += 1.0
         except asyncio.CancelledError:
             break
 
 
 @router.websocket("/input_signal")
 async def ingest_medical_signals(websocket: WebSocket):
-    """Получение сигналов с аппарата"""
     await websocket.accept()
-    window: Deque[Sample] = deque()
     processing_task: asyncio.Task | None = None
     out_client: Optional[OutboundWSClient] = None
+    queue: asyncio.Queue[Sample] = asyncio.Queue()
+
     try:
         if RESULTS_SINK == "ws":
             out_client = OutboundWSClient(OUTBOUND_WS_URL, heartbeat=20)
             await out_client.connect()
-        loop = asyncio.get_running_loop()
-        first_signal_wall: float | None = None
-        start_monotonic: float | None = None
+
+        processing_task = asyncio.create_task(processing_loop(queue, out_client))
 
         while True:
             raw = await websocket.receive_text()
             try:
                 msg = orjson.loads(raw)
-            except Exception:
+            except Exception as e:
                 continue
 
             mtype = msg.get("type")
@@ -315,20 +274,11 @@ async def ingest_medical_signals(websocket: WebSocket):
             if mtype != "signal":
                 continue
 
-            sample = _parse_signal(msg)
+            sample: Sample | None = _parse_signal(msg)
             if sample is None:
                 continue
-            ts = sample.ts
 
-            if first_signal_wall is None:
-                first_signal_wall = ts
-                start_monotonic = loop.time()
-                processing_task = asyncio.create_task(
-                    processing_loop(window, start_monotonic, out_client, first_signal_wall)
-                )
-
-            window.append(sample)
-            _prune_window(window, ts, PROCESS_WINDOW_SEC)
+            await queue.put(sample)
 
     except WebSocketDisconnect:
         pass
