@@ -28,6 +28,10 @@ pyjwt               = {extras = ["cryptography"], version = "^2.10.1"}
 pytz = "^2025.2"
 aiosqlite = "^0.21.0"
 python-multipart = "^0.0.20"
+websockets = "^15.0.1"
+python-socks = "^2.7.2"
+aiohttp = "^3.12.15"
+orjson = "^3.11.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest          = "~8.3.5"

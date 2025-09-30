@@ -1,23 +1,23 @@
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from dishka.integrations.fastapi import setup_dishka
 
-from app.common.container import build_container
-from app.common.settings.web import RunMode, app_settings, http_server_settings
-from app.logger import setup_logger
-from app.middlewares import HTTPLogMiddleware
+from .common.container import build_container
+from .common.settings.web import RunMode, app_settings, http_server_settings
+from .logger import setup_logger
+from .middlewares import HTTPLogMiddleware
 
-from app.modules.core.infra.routes.base import router as core_router
-# from app.modules.auth.router import router as auth_router
-from app.modules.monitoring.health.router import router as health_router
+from .modules.core.infra.routes.http.base import router as core_router
+from .modules.monitoring.health.router import router as health_router
+from .modules.ingest.infra.routes.base import router as ingest_router
 
-ROUTERS = [
-    health_router,
-    core_router,
-    # auth_router,
+ROUTERS: list[tuple[APIRouter, str | None]] = [
+    (health_router, None),
+    (core_router, None),
+    (ingest_router, "/ws/ingest")
 ]
 
 
@@ -29,12 +29,10 @@ async def lifespan(app: FastAPI):
         await app.state.dishka_container.close()
 
 
-def create_app(env_name: str = ".env") -> FastAPI:
-    container = build_container(env_name)
+def _is_dev() -> bool:
+    return app_settings.run_mode == RunMode.DEV
 
-    def _is_dev() -> bool:
-        return app_settings.run_mode == RunMode.DEV
-
+def create_server() -> FastAPI:
     app = FastAPI(
         title="woym-market-server",
         root_path="/backend",
@@ -44,8 +42,6 @@ def create_app(env_name: str = ".env") -> FastAPI:
         lifespan=lifespan,
     )
 
-    setup_dishka(container, app)
-    setup_logger(_is_dev())
 
     app.add_middleware(
         HTTPLogMiddleware,
@@ -62,6 +58,20 @@ def create_app(env_name: str = ".env") -> FastAPI:
     )
 
     for router in ROUTERS:
-        app.include_router(router)
+        if router[1] is None:
+            app.include_router(router[0])
+        else:
+            app.include_router(router[0], prefix=router[1])
+
+    return app
+
+
+def create_app(env_name: str = ".env") -> FastAPI:
+    container = build_container(env_name)
+
+    app = create_server()
+
+    setup_dishka(container, app)
+    setup_logger(_is_dev())
 
     return app

@@ -1,20 +1,19 @@
 from __future__ import annotations
+
+from collections.abc import Iterable, AsyncIterable
 from pathlib import Path
 
 from dishka import Provider, Scope, provide, make_async_container, AsyncContainer
 from dishka.integrations.fastapi import FastapiProvider
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from app.common.db import create_db_resources
-from app.common.settings import KeycloakSettings, DBSettings
-from app.modules.auth.adapters.user_repository_sqlalchemy import SAUserRepository
-from app.modules.auth.health import make_auth_checks
+from app.common.settings import DatabaseSettings
 from app.modules.monitoring.health.aggregation import HealthCheck
 
 ENV_DIR = Path(__file__).resolve().parents[3] / 'run' / '.envs'
 
 
-class AppProvider(Provider):
+class SettingsProvider(Provider):
     """Провайдер уровня приложения."""
 
     scope = Scope.APP
@@ -25,22 +24,31 @@ class AppProvider(Provider):
         self._engine: AsyncEngine | None = None
 
     @provide
-    def db_settings(self) -> DBSettings:
-        return DBSettings(_env_file=self._env_file)
+    def db_settings(self) -> DatabaseSettings:
+        return DatabaseSettings(_env_file=self._env_file)
 
-    @provide
-    def db_engine(self, dbs: DBSettings) -> AsyncEngine:
-        resources = create_db_resources(dbs.db_url, echo=dbs.echo)
-        self._engine = resources.engine
-        return resources.engine
 
-    @provide
-    def session_factory(self, db_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-        return async_sessionmaker(bind=db_engine, expire_on_commit=False, class_=AsyncSession)
+class DbProvider(Provider):
+    @provide(scope=Scope.APP)
+    def engine(self, settings: DatabaseSettings) -> Iterable[AsyncEngine]:
+        engine = create_async_engine(settings.db_url, pool_pre_ping=True)
+        try:
+            yield engine
+        finally:
+            engine.dispose()
 
-    @provide
-    def user_repo(self, session_factory: async_sessionmaker[AsyncSession]) -> SAUserRepository:
-        return SAUserRepository(session_factory)
+    @provide(scope=Scope.APP)
+    def session_factory(self, engine: AsyncEngine) -> async_sessionmaker:
+        return async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    @provide(scope=Scope.REQUEST)
+    async def session(self, session_factory: async_sessionmaker) -> AsyncIterable[AsyncSession]:
+        async with session_factory() as session:
+            yield session
+
+
+class HealthProvider(Provider):
+    scope = Scope.APP
 
     @provide
     def health_checks(
@@ -48,11 +56,9 @@ class AppProvider(Provider):
         db_engine: AsyncEngine,
     ) -> list[HealthCheck]:
         checks: list[HealthCheck] = []
-        checks += make_auth_checks(db_engine)
         return checks
 
 
-def build_container(env_name: str = ".env") -> AsyncContainer:
-    env_path = ENV_DIR / env_name
-    provider = AppProvider(env_path)
+def build_container(env_path: str) -> AsyncContainer:
+    provider = SettingsProvider(env_path)
     return make_async_container(provider, FastapiProvider())

@@ -3,7 +3,7 @@ import functools
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class DBSettings(BaseSettings):
+class DatabaseSettings(BaseSettings):
     driver: str
     host: str
     port: int | None = None

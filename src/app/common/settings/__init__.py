@@ -1,2 +1,2 @@
 from .keycloak import KeycloakSettings
-from .db import DBSettings
+from .db import DatabaseSettings
