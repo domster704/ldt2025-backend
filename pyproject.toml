@@ -35,6 +35,7 @@ orjson = "^3.11.3"
 numpy = "^2.3.3"
 pandas = "^2.3.3"
 catboost = "^1.2.8"
+alembic = "^1.16.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest          = "~8.3.5"
