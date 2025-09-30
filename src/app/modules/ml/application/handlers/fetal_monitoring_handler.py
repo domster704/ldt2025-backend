@@ -1,12 +1,12 @@
 import pandas as pd
 
 from app.modules.ingest.entities.ctg import CardiotocographyPoint
+from app.modules.ml.application.interfaces.fetal_monitoring import IFetalMonitoring
 from app.modules.ml.domain.entities.process import Process
-from app.modules.ml.infrastucture.services.fetal_monitoring import FetalMonitoringService
 
 
 class FetalMonitoringHandler:
-    def __init__(self, fetal_monitoring_service: FetalMonitoringService):
+    def __init__(self, fetal_monitoring_service: IFetalMonitoring):
         self.fetal_monitoring_service = fetal_monitoring_service
 
     def process_stream(self, points: list[CardiotocographyPoint]) -> Process:
