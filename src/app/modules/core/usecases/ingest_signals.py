@@ -1,4 +1,4 @@
-from app.modules.core.domain.ctg import CardiotocographyPoint
+from app.modules.core.domain.ctg_point import CardiotocographyPoint
 from ..usecases.ports.signals import SignalsPort
 
 
