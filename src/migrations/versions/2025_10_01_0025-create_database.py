@@ -5,11 +5,12 @@ Revises:
 Create Date: 2025-10-01 00:25:01.740663+03:00
 
 """
+from datetime import datetime
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import PrimaryKeyConstraint, UniqueConstraint
+from sqlalchemy import UniqueConstraint
 
 # revision identifiers, used by Alembic.
 revision: str = '7ec1afc86853'
@@ -166,11 +167,11 @@ def upgrade() -> None:
             comment='Кол-во сокращений матки'
         ),
         sa.Column(
-            'fetal movements', sa.Integer(), nullable=True, default=0,
+            'fetal_movements', sa.Integer(), nullable=True, default=0,
             comment='Шевелений плода, за сеанс'
         ),
         sa.Column(
-            'fetal movements_little', sa.Integer(), nullable=True, default=0,
+            'fetal_movements_little', sa.Integer(), nullable=True, default=0,
             comment='Шевелений плода, в час'
         ),
         sa.Column(
@@ -192,6 +193,10 @@ def upgrade() -> None:
         sa.Column(
             'loss_signals', sa.Float(), nullable=True, default=0,
             comment='Потеря сигнала (%)'
+        ),
+        sa.Column(
+            'created_at', sa.Date(), nullable=False, default=datetime.now(),
+            comment='Дата обследования'
         ),
         UniqueConstraint('id', 'ctg_id'),
         comment='Результаты КТГ'
