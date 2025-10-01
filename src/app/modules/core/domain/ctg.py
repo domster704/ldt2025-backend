@@ -4,13 +4,8 @@ from os import PathLike
 
 
 @dataclass(frozen=True, slots=True)
-class CTGHistory:
-    file_path: PathLike
-    archive_path: PathLike | None
-
-
-@dataclass(frozen=True, slots=True)
 class CTGResult:
+    ctg_id: int
     gest_age: str
     bpm: float
     uc: float
@@ -33,3 +28,11 @@ class CTGResult:
     low_variability: int
     loss_signals: float
     timestamp: datetime
+
+
+@dataclass(slots=True)
+class CTGHistory:
+    id: int
+    file_path: PathLike
+    archive_path: PathLike | None
+    result: CTGResult | None = None

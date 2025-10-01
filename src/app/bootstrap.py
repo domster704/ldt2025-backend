@@ -5,23 +5,21 @@ from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from dishka.integrations.fastapi import setup_dishka
 
-from .common.container import build_container
-from .common.settings.web import RunMode, app_settings, http_server_settings
+from .common.settings import app_settings, RunMode, http_server_settings
 from .logger import setup_logger
 from .middlewares import HTTPLogMiddleware
 
-from .modules.core.infra.routes.http.base import router as core_router
-from .modules.monitoring.health.router import router as health_router
+from app.modules.core.infra.routes.base import router as core_router
+from .modules.core.infra.provider import create_di_container, get_container
 from .modules.ingest.infra.routes.base import router as ingest_router
 from .modules.streaming.presentation.router.streaming_router import streaming_router
 
+
 ROUTERS: list[tuple[APIRouter, str | None]] = [
-    (health_router, None),
-    (core_router, None),
+    (core_router, "/http/crud"),
     (ingest_router, "/ws/ingest"),
     (streaming_router, "/ws/streaming"),
 ]
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,7 +27,6 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await app.state.dishka_container.close()
-
 
 def _is_dev() -> bool:
     return app_settings.run_mode == RunMode.DEV
@@ -43,7 +40,6 @@ def create_server() -> FastAPI:
         redoc_url=None,
         lifespan=lifespan,
     )
-
 
     app.add_middleware(
         HTTPLogMiddleware,
@@ -68,11 +64,10 @@ def create_server() -> FastAPI:
     return app
 
 
-def create_app(env_name: str = ".env") -> FastAPI:
-    container = build_container(env_name)
-
+def create_app() -> FastAPI:
+    create_di_container()
+    container = get_container('async')
     app = create_server()
-
     setup_dishka(container, app)
     setup_logger(_is_dev())
 
