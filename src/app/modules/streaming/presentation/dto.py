@@ -29,6 +29,7 @@ class NotificationDTO(BaseModel):
 
 class ProcessDTO(BaseModel):
     time_sec: int
+    current_status: Optional[str]
     notifications: dict[int, list[NotificationDTO]]
     figo_situation: Optional[str]
     current_fhr: Optional[float]

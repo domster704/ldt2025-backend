@@ -80,6 +80,9 @@ class FetalMonitoringService(IFetalMonitoring):
             "figo_situation": None,
             # 8) Накопленные уведомления
             "notifications": {},
+            # 9) Текущий статус
+            "current_status": None,
+            # 10) Время в секундах
             "time_sec": 0,
         }
 
@@ -236,6 +239,50 @@ class FetalMonitoringService(IFetalMonitoring):
         }
 
     # ====== Уведомления ======
+
+    def _compose_current_status(self, now_t: int):
+        """
+        Формирует компактную строку статуса.
+        Основа: вероятность гипоксии.
+        Далее: пометки об отклонениях — акцелерация/децелерация/тахикардия.
+        """
+        proba = self.last_notification.get("hypoxia_proba_ewma")
+        if proba is None:
+            proba = self.last_notification.get("hypoxia_proba")
+        txt_proba = "недоступно" if proba is None else f"{round(proba*100):d}%"
+
+        if proba is None:
+            prefix = "Вероятность гипоксии плода: недоступно"
+        elif proba >= 0.80:
+            prefix = f"Высокая вероятность гипоксии плода: {txt_proba}"
+        elif proba >= 0.50:
+            prefix = f"Повышенная вероятность гипоксии плода: {txt_proba}"
+        else:
+            prefix = f"Вероятность гипоксии плода: {txt_proba}"
+
+        notes = []
+
+        if self.active_accel is not None and self.active_accel.get("announced"):
+            notes.append("Акцелерация (≥15с)")
+        if self.active_decel is not None and self.active_decel.get("announced"):
+            notes.append("Децелерация (≥15с)")
+
+        if self._state_flags.get("tachy_active"):
+            baseline = self.last_notification.get("median_fhr_10min")
+            curr = self.last_notification.get("current_fhr")
+            delta_txt = ""
+            if baseline is not None and curr is not None:
+                delta = curr - baseline
+                if not np.isnan(delta):
+                    sign = "+" if delta >= 0 else "−"
+                    delta_txt = f" ({sign}{abs(round(delta))} bpm от базального ритма)"
+            notes.append(f"Подозрение на тахикардию{delta_txt}")
+
+        if self._state_flags.get("brady_active"):
+            notes.append("Подозрение на брадикардию")
+
+        status = prefix if not notes else prefix + " | " + " | ".join(notes)
+        self.last_notification["current_status"] = status
 
     def _update_tachycardia(self, now_t):
         if now_t % self.tachycardia_seconds_threshold != 0:
@@ -541,6 +588,7 @@ class FetalMonitoringService(IFetalMonitoring):
 
         return Process(
             time_sec=now_t,
+            current_status=self.last_notification["current_status"],
             notifications=self.notifications,
             figo_situation=self.last_notification["figo_situation"],
             current_fhr=self.last_notification["current_fhr"],

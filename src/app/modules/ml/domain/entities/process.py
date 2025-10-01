@@ -24,6 +24,7 @@ class Notification:
 @dataclass(frozen=True, slots=True)
 class Process:
     time_sec: int
+    current_status: str | None
     notifications: dict[int, list[Notification]]
     figo_situation: str | None
     current_fhr: float | None
