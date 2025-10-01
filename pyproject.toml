@@ -36,6 +36,7 @@ numpy = "^2.3.3"
 pandas = "^2.3.3"
 catboost = "^1.2.8"
 alembic = "^1.16.5"
+greenlet = "^3.2.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest          = "~8.3.5"

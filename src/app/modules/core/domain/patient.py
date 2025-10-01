@@ -10,7 +10,8 @@ class PatientAdditionalInfo:
     blood_gas_lac: float | None
     blood_gas_be: float | None
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class Patient:
     id: int
     fio: str
+    additional_info: PatientAdditionalInfo | None = None

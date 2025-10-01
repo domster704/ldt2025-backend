@@ -59,7 +59,7 @@ def db_seed():
     p = Person(Locale.RU)
     # Заносим пациентов
     for i in range(210):
-        full_name = p.full_name(gender=Gender.FEMALE) + p.last_name()
+        full_name = p.full_name(gender=Gender.FEMALE)
         with engine.begin() as conn:
             conn.execute(
                 text("INSERT INTO patients (full_name) VALUES (:full_name)"),
