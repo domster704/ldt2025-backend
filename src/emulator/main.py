@@ -24,7 +24,6 @@ async def start(archive: UploadFile = File(...)):
         for body, offset in sending_signals(
             tmp_path
         ):
-            print(body)
             await asyncio.sleep(float(Decimal(body['timestamp']) - prev_timestamp))
             await ws.send(json.dumps(body))
             prev_timestamp = Decimal(body['timestamp'])
