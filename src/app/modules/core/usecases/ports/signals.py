@@ -2,7 +2,7 @@ from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.core.domain.ctg import CardiotocographyPoint
+from app.modules.core.domain.ctg_point import CardiotocographyPoint
 
 
 class SignalsPort(Protocol):

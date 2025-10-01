@@ -35,12 +35,16 @@ orjson = "^3.11.3"
 numpy = "^2.3.3"
 pandas = "^2.3.3"
 catboost = "^1.2.8"
+alembic = "^1.16.5"
+greenlet = "^3.2.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest          = "~8.3.5"
 pytest-asyncio  = "~1.0.0"
 ruff            = "~0.11.12"
 mypy            = "~1.17.1"
+mimesis = "^18.0.0"
+openpyxl = "^3.1.5"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

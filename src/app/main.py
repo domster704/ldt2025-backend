@@ -1,13 +1,9 @@
-from pathlib import Path
-
 import uvicorn
 
 from app.bootstrap import create_app
-from app.common.settings.web import RunMode
-from common.settings.web import app_settings, http_server_settings
+from app.common.settings import http_server_settings, app_settings, RunMode
 
-ENVS_DIR = Path(__file__).resolve().parents[2] / 'run' / '.envs'
-app = create_app(env_name= str(ENVS_DIR / '.dev.env'))
+app = create_app()
 
 if __name__ == '__main__':
     app

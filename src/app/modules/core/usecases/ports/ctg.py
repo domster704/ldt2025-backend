@@ -1,0 +1,10 @@
+from typing import Protocol
+
+from app.modules.core.domain.ctg import CTGHistory, CTGResult
+
+
+class CTGPort(Protocol):
+
+    async def list_ctg(self, ctg_ids: list[int]) -> list[CTGHistory]: ...
+
+    async def list_results(self, ctg_ids: list[int]) -> list[CTGResult]: ...
