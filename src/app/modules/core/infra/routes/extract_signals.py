@@ -1,42 +1,35 @@
-import os
-import tempfile
-import zipfile
-
+import httpx
+from dishka.integrations.fastapi import FromDishka
 from fastapi import APIRouter, UploadFile, HTTPException, File
 from starlette import status
 
-from app.modules.core.usecases.extract_material_sginals import extract_material_signals
+from app.common.settings import AppSettings
 
 router = APIRouter()
 
-
 @router.post(
-    '/extract-bpm-uc-signals',
-    description="Обработка архива с записями о ЧСС и МС"
+    '/extract-signals',
+    description="Запуск эмулятора"
 )
-async def extract_bpm_uc_signals(archive: UploadFile = File(...)):
-    if not archive.filename.endswith('.zip'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be zip archive"
-        )
-
-    tmp = tempfile.NamedTemporaryFile(delete=False)
-    tmp_path = tmp.name
-    while True:
-        chunk = await archive.read(1024 * 1024)
-        if not chunk:
-            break
-        tmp.write(chunk)
-    tmp.flush()
-    tmp.seek(0)
-
+async def extract_bpm_uc_signals(
+        app_settings: FromDishka[AppSettings],
+        archive: UploadFile = File(...),
+):
     try:
-        with zipfile.ZipFile(tmp) as zip_file:
-            data = extract_material_signals(zip_file)
-            return data
-    except zipfile.BadZipFile:
-        raise HTTPException(400, "повреждённый ZIP")
-    finally:
-        tmp.close()
-        os.unlink(tmp_path)
+        content = await archive.read()
+
+        async with httpx.AsyncClient(base_url=app_settings.emulator_uri) as client:
+            resp = await client.post(
+                '/start',
+                files={"file": (archive.filename, content, archive.content_type)}
+            )
+            if resp.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail='Не удалось запустить эмулятор'
+                )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при передаче архива: {e}"
+        )

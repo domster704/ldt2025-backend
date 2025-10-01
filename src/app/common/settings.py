@@ -1,6 +1,7 @@
 from enum import Enum
 from functools import cached_property
 
+from pydantic import HttpUrl
 from pydantic_settings import SettingsConfigDict, BaseSettings
 
 class InitializationError(Exception):
@@ -15,6 +16,7 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')
 
     run_mode: RunMode = 'dev'
+    emulator_uri: HttpUrl
 
 class HTTPServerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')
