@@ -9,7 +9,7 @@ import websockets
 from fastapi import FastAPI, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 
-from emulator.sending_signals import sending_signals
+from app.sending_signals import sending_signals
 
 app = FastAPI()
 app.add_middleware(

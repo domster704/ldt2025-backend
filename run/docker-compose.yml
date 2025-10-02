@@ -20,3 +20,11 @@ services:
       DB_DATABASE_NAME: './../app.db'
     ports:
       - "8001:${HTTP_PORT}"
+  emulator:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: run/emulator.Dockerfile
+      args:
+        POETRY_VERSION: 2.1.4
+        VCS_REF: "abc123"
