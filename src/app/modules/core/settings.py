@@ -1,4 +1,5 @@
 import functools
+import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,6 +15,7 @@ class DatabaseSettings(BaseSettings):
     @functools.cached_property
     def db_url(self) -> str:
         if self.driver.startswith("sqlite"):
+            print(os.path.abspath(f"{self.driver}:///{self.database_name}"))
             return f"{self.driver}:///{self.database_name}"
 
         return (
