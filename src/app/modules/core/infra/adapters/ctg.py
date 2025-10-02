@@ -47,9 +47,9 @@ class CTGRepository(CTGPort):
             CTGResult(
                 ctg_id=row[1], gest_age=row[2], bpm=row[3], uc=row[4], figo=row[5], figo_prognosis=row[6],
                 bhr=row[7], amplitude_oscillations=row[8], oscillation_frequency=row[9], ltv=row[10],
-                stv=row[11], stv_little=row[12], accellations=row[13], deceleration=row[14],
+                stv=row[11], stv_little=row[12], accelerations=row[13], deceleration=row[14],
                 uterine_contractions=row[15], fetal_movements=row[16], fetal_movements_little=row[17],
-                accellations_little=row[18], deceleration_little=row[19], high_variability=row[20],
+                accelerations_little=row[18], deceleration_little=row[19], high_variability=row[20],
                 low_variability=row[21], loss_signals=row[22], timestamp=datetime.datetime.fromisoformat(row[23])
             )
             for row in res
@@ -73,10 +73,3 @@ class CTGRepository(CTGPort):
         )).scalar_one()
         await self._session.commit()
         return id
-
-    async def add_result(self, ctg_result: CTGResult, ctg_id: int) -> None:
-        stmt = text(
-            """
-            INSERT into ctg_results (ctg_id, created_at)
-            """
-        )

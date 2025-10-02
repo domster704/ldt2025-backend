@@ -2,6 +2,7 @@ from collections import deque
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LinearRegression
 
 from app.modules.ml.application.interfaces.fetal_monitoring import IFetalMonitoring
 from app.modules.ml.domain.entities.process import Process, ProcessResults, TimeRange

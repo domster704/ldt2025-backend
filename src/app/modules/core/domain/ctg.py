@@ -17,12 +17,12 @@ class CTGResult:
     ltv: int
     stv: int
     stv_little: int
-    accellations: int
+    accelerations: int
     deceleration: int
     uterine_contractions: int
     fetal_movements: int
     fetal_movements_little: int
-    accellations_little: int
+    accelerations_little: int
     deceleration_little: int
     high_variability: int
     low_variability: int

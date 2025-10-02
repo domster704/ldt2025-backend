@@ -14,7 +14,7 @@ packages = [{ include = "app", from = "src" }]
 
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.13"
+python = ">=3.12,<3.13"
 
 fastapi             = ">=0.116.2,<0.117.0"
 sqlalchemy          = ">=2.0.43,<3.0.0"
@@ -37,6 +37,7 @@ pandas = "^2.3.3"
 catboost = "^1.2.8"
 alembic = "^1.16.5"
 greenlet = "^3.2.4"
+scikit-learn = "^1.7.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest          = "~8.3.5"
