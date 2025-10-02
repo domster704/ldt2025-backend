@@ -244,7 +244,7 @@ async def processing_loop(
                         payload = CardiotocographyPoint(
                             timestamp=sec_start + i * step,
                             bpm=s.bpm,
-                            uc=s.uterus,
+                            uc=max(0, s.uterus),
                         )
                         payload_list.append(payload)
                     await mux.send(payload_list)
