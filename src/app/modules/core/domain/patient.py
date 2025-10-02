@@ -9,6 +9,7 @@ class PatientAdditionalInfo:
     blood_gas_glu: float | None
     blood_gas_lac: float | None
     blood_gas_be: float | None
+    anamnesis: str | None
 
 @dataclass(slots=True)
 class Patient:

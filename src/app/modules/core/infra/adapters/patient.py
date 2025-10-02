@@ -45,6 +45,7 @@ class PatientRepository(PatientPort):
                 blood_gas_glu=add_info_row[5],
                 blood_gas_lac=add_info_row[6],
                 blood_gas_be=add_info_row[7],
+                anamnesis=add_info_row[8],
             )
 
         return add_info
