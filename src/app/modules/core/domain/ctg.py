@@ -5,6 +5,7 @@ from os import PathLike
 
 @dataclass(frozen=True, slots=True)
 class CTGResult:
+
     ctg_id: int
     gest_age: str
     bpm: float

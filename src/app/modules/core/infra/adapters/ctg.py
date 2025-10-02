@@ -10,17 +10,19 @@ class CTGRepository(CTGPort):
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def list_ctg(self, ctg_ids: list[int]) -> list[CTGHistory]:
+    async def list_ctg(self, ctg_ids: list[int]) -> list[CTGResult]:
         stmt = text(
             """
             SELECT * FROM ctg_results WHERE ctg_results.ctg_id IN :ids
             """
         ).bindparams(bindparam("ids", expanding=True))
 
-        res = await self._session.execute(stmt, {"ids": ctg_ids})
+        res = (await self._session.execute(stmt, {"ids": ctg_ids})).all()
 
         ctg_results = [
-            CTGResult(**row._mapping)
+            CTGResult(
+                *row[1:]
+            )
             for row in res
         ]
         return ctg_results
