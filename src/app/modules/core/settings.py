@@ -13,13 +13,13 @@ class DatabaseSettings(BaseSettings):
 
     @functools.cached_property
     def db_url(self) -> str:
-        url_str = (
-            f"{self.driver}://" +
-            (f"{self.username}:{self.password}" if self.username and self.password else "") +
-            (f"@{self.host}" if self.host else "") +
-            (f":{self.port}" if self.port else "") +
+        if self.driver.startswith("sqlite"):
+            return f"{self.driver}:///{self.database_name}"
+
+        return (
+            f"{self.driver}://{self.username}:{self.password}"
+            f"@{self.host}{f':{self.port}' if self.port else ''}"
             f"/{self.database_name}"
         )
-        return url_str
 
     model_config = SettingsConfigDict(env_prefix='DB_', extra='allow')
