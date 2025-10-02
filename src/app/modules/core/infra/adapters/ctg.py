@@ -1,4 +1,4 @@
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.core.domain.ctg import CTGHistory, CTGResult
@@ -13,19 +13,17 @@ class CTGRepository(CTGPort):
     async def list_ctg(self, ctg_ids: list[int]) -> list[CTGHistory]:
         stmt = text(
             """
-            SELECT * FROM ctg_history WHERE id IN :ids
+            SELECT * FROM ctg_results WHERE ctg_results.ctg_id IN :ids
             """
-        )
-        res = await self._session.execute(stmt, {"ids": tuple(ctg_ids)})
-        ctgs = [
-            CTGHistory(
-                id=row[0],
-                file_path=row[2],
-                archive_path=row[3]
-            )
-            for row in res.all()
+        ).bindparams(bindparam("ids", expanding=True))
+
+        res = await self._session.execute(stmt, {"ids": ctg_ids})
+
+        ctg_results = [
+            CTGResult(**row._mapping)
+            for row in res
         ]
-        return ctgs
+        return ctg_results
 
     async def list_results(self, ctg_ids: list[int]) -> list[CTGResult]:
         stmt = text(
