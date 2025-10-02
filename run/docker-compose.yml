@@ -3,93 +3,20 @@ services:
     restart: unless-stopped
     build:
       context: ..
-      dockerfile: app.Dockerfile
+      dockerfile: run/app.Dockerfile
       args:
         POETRY_VERSION: 2.1.4
         VCS_REF: "abc123"
     env_file:
       - .env
     environment:
+      RUN_MODE: ${RUN_MODE}
+      EMULATOR_URI: ${EMULATOR_URI}
+
       HTTP_HOST: ${HTTP_HOST}
       HTTP_PORT: ${HTTP_PORT}
-    depends_on:
-      - database
-    volumes:
-      - ./logs:/backend/logs
-#    expose:
-#      - 8000
+      API_VERSION: ${API_VERSION}
+      DB_DRIVER: ${DB_DRIVER}
+      DB_DATABASE_NAME: './../app.db'
     ports:
-      - "${HTTP_PORT}:8000"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${HTTP_PORT:-8000}/health >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 15s
-
-  database:
-    image: postgres:17
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8 --data-checksums"
-    command:
-      - "postgres"
-    volumes:
-      - db-data-prod:/var/lib/postgresql/data
-    expose:
-      - "5432"
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /run/postgresql
-    cap_drop:
-      - ALL
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME} -h 127.0.0.1 -p 5432"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    security_opt:
-      - no-new-privileges:true
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.3
-    restart: unless-stopped
-    command: start --optimized
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://database:5432/keycloak?currentSchema=kc_auth
-      KC_DB_USERNAME: ${KC_DB_USERNAME}
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
-      KC_HOSTNAME: auth.example.com
-      KC_PROXY_HEADERS: xforwarded
-      KC_HTTP_ENABLED: "false"
-      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/tls/fullchain.pem
-      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/tls/privkey.pem
-      KC_HEALTH_ENABLED: "true"
-      KC_METRICS_ENABLED: "true"
-    volumes:
-      - ./keycloak/providers:/opt/keycloak/providers:ro  # если нужны SPI
-      - ./keycloak/themes:/opt/keycloak/themes:ro        # если есть темы
-      - ./keycloak/tls:/opt/keycloak/conf/tls:ro         # fullchain.pem / privkey.pem
-    depends_on:
-      - database
-    ports:
-      - "8443:8443"
-    expose:
-      - 9000
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health/ready >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 30s
-
-volumes:
-  db-data-prod:
+      - "8001:${HTTP_PORT}"

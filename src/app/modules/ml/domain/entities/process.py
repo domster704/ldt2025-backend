@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 
 
 @dataclass(frozen=True, slots=True)
@@ -7,17 +8,42 @@ class TimeRange:
     end: int
 
 
+class Color(Enum):
+    RED = "red"
+    GREEN = "green"
+    YELLOW = "yellow"
+    PURPLE = "purple"
+
+
+@dataclass(frozen=True, slots=True)
+class Notification:
+    message: str
+    color: Color
+
+
 @dataclass(frozen=True, slots=True)
 class Process:
-    tachycardia: str
-    hypoxia_proba: float | None
-    accelerations: list[TimeRange]
-    decelerations: list[TimeRange]
-    median_fhr_10min: float | None
+    time_sec: int
+    current_status: str | None
+    notifications: dict[int, list[Notification]]
+    figo_situation: str | None
     current_fhr: float | None
     current_uterus: float | None
-    stv_5min: float | None
-    time_sec: int
+    stv: float | None
+    stv_forecast: dict[str, float | None]
+    median_fhr_10min: float | None
+    hypoxia_proba: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessResults:
+    last_figo: str | None
+    baseline_bpm: float | None
+    stv_all: float | None
+    stv_10min_mean: float | None
+    accelerations_count: int
+    decelerations_count: int
+    uterus_mean: float | None
 
 
 @dataclass(frozen=True, slots=True)

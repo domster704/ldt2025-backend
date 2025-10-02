@@ -53,12 +53,12 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
 FROM base AS runtime
 
 ARG VCS_REF=""
-LABEL org.opencontainers.image.title="woym-market-server" \
-      org.opencontainers.image.description="REST API server for Woym Market" \
-      org.opencontainers.image.version="3.0.0" \
+LABEL org.opencontainers.image.title="lc2025-server" \
+      org.opencontainers.image.description="REST API server for project" \
+      org.opencontainers.image.version="0.1.0" \
       org.opencontainers.image.revision=$VCS_REF \
-      org.opencontainers.image.source="https://github.com/ParkieV/woym-market" \
-      org.opencontainers.image.licenses="Proprietary"
+      org.opencontainers.image.source="https://github.com/domster704/lct2025" \
+      org.opencontainers.image.licenses="MIT"
 
 RUN useradd -u 10001 -m appuser
 
@@ -71,9 +71,8 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 
 WORKDIR /home
 
-COPY run/start.sh /usr/local/bin/start
-RUN chmod +x /usr/local/bin/start
+COPY ./app.db .
 
 EXPOSE 8000
 
-ENTRYPOINT ["/usr/local/bin/start"]
+ENTRYPOINT ["python", "/home/app/main.py"]

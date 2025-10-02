@@ -1,7 +1,8 @@
 import asyncio
-from typing import Callable, Iterable, Any
+import inspect
+from typing import Callable, Iterable, Any, Awaitable
 
-SinkFn = Callable[[Iterable[Any]], None]
+SinkFn = Callable[[Iterable[Any]], Awaitable[None] | None]
 
 class Multiplexer:
     def __init__(self, *sinks: SinkFn) -> None:
@@ -15,4 +16,4 @@ class Multiplexer:
             if asyncio.iscoroutine(res):
                 tasks.append(res)  # async sink
         if tasks:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)

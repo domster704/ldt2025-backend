@@ -32,10 +32,7 @@ class DatabaseProvider(Provider):
     @provide(scope=Scope.APP)
     def engine(self, settings: DatabaseSettings) -> Iterable[AsyncEngine]:
         engine = create_async_engine(settings.db_url, pool_pre_ping=True)
-        try:
-            yield engine
-        finally:
-            engine.dispose()
+        yield engine
 
     @provide(scope=Scope.APP)
     def session_factory(self, engine: AsyncEngine) -> async_sessionmaker:

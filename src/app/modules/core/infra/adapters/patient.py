@@ -45,6 +45,7 @@ class PatientRepository(PatientPort):
                 blood_gas_glu=add_info_row[5],
                 blood_gas_lac=add_info_row[6],
                 blood_gas_be=add_info_row[7],
+                anamnesis=add_info_row[8],
             )
 
         return add_info
@@ -57,3 +58,15 @@ class PatientRepository(PatientPort):
         )
         res = await self._session.execute(stmt, {"patient_id": patient_id})
         return res.scalars().all()
+
+    async def get_all(self) -> Sequence[Patient]:
+        stmt = text("SELECT * FROM patients")
+        res = await self._session.execute(stmt)
+        rows = res.fetchall()
+        return [
+            Patient(
+                id=row[0],
+                fio=row[1],
+            )
+            for row in rows
+        ]

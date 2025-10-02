@@ -70,6 +70,10 @@ def upgrade() -> None:
             'blood_gas_be', sa.Float(), nullable=True,
             comment='Базовый избыток, показатель кислотно-щелочного баланса'
         ),
+        sa.Column(
+            'anamnesis', sa.Text(), nullable=True,
+            comment='Анамнез'
+        ),
         UniqueConstraint('id', 'patient_id'),
         comment='Информация о пациенте',
     )
@@ -115,19 +119,19 @@ def upgrade() -> None:
             comment='Срок беременности'
         ),
         sa.Column(
-            'bpm', sa.Float(), nullable=False,
+            'bpm', sa.Float(),
             comment='Частота сердечных сокращений'
         ),
         sa.Column(
-            'uc', sa.Float(), nullable=False,
+            'uc', sa.Float(),
             comment='Маточные скоращения'
         ),
         sa.Column(
-            'figo', sa.String(length=20), nullable=False,
+            'figo', sa.String(length=20),
             comment='Шкала оценки состояния плода/КТГ'
         ),
         sa.Column(
-            'figo_prognosis', sa.String(length=20), nullable=False,
+            'figo_prognosis', sa.String(length=20),
             comment='Прогноз FIGO'
         ),
         sa.Column(
@@ -155,7 +159,7 @@ def upgrade() -> None:
             comment='КВВ за 10 минут'
         ),
         sa.Column(
-            'accellations', sa.Integer(), nullable=True, default=0,
+            'acceleration', sa.Integer(), nullable=True, default=0,
             comment='Акцелерации >15 уд/мин'
         ),
         sa.Column(
@@ -175,7 +179,7 @@ def upgrade() -> None:
             comment='Шевелений плода, в час'
         ),
         sa.Column(
-            'accellations_little', sa.Integer(), nullable=True, default=0,
+            'accelerations_little', sa.Integer(), nullable=True, default=0,
             comment='Акцелерации >10 уд/мин'
         ),
         sa.Column(
@@ -195,7 +199,7 @@ def upgrade() -> None:
             comment='Потеря сигнала (%)'
         ),
         sa.Column(
-            'created_at', sa.Date(), nullable=False, default=datetime.now(),
+            'created_at', sa.Date(), nullable=False, default='now()',
             comment='Дата обследования'
         ),
         UniqueConstraint('id', 'ctg_id'),

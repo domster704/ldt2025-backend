@@ -10,15 +10,16 @@ from .logger import setup_logger
 from .middlewares import HTTPLogMiddleware
 
 from app.modules.core.infra.routes.base import router as core_router
-from .modules.core.infra.provider import create_di_container, get_container
+from app.common.provider import create_di_container, get_container
 from .modules.ingest.infra.routes.base import router as ingest_router
 from .modules.streaming.presentation.router.streaming_router import streaming_router
-
+from .modules.ml.presentation.router.analizing import router as analizing_router
 
 ROUTERS: list[tuple[APIRouter, str | None]] = [
     (core_router, "/http/crud"),
     (ingest_router, "/ws/ingest"),
     (streaming_router, "/ws/streaming"),
+    (analizing_router, "/ml")
 ]
 
 @asynccontextmanager
