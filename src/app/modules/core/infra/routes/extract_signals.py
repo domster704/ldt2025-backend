@@ -20,7 +20,7 @@ async def extract_bpm_uc_signals(
         async with httpx.AsyncClient(base_url=str(app_settings.emulator_uri)[:-1]) as client:
             resp = await client.post(
                 '/start',
-                files={"file": (archive.filename, content, archive.content_type)}
+                files={"archive": content}
             )
             if resp.status_code != 200:
                 raise HTTPException(
