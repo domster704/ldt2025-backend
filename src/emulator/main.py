@@ -19,7 +19,7 @@ async def start(archive: UploadFile = File(...)):
         tmp.write(content)
         tmp_path = tmp.name
 
-    async with websockets.connect('ws://127.0.0.1:8010/ws/ingest/input_signal') as ws:
+    async with websockets.connect('ws://127.0.0.1:8010/ws/ingest/input-signal') as ws:
         prev_timestamp = Decimal(0)
         for body, offset in sending_signals(
             tmp_path

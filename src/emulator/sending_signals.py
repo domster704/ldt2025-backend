@@ -1,7 +1,5 @@
-import asyncio
 import csv
 import itertools
-import json
 import shutil
 import tempfile
 from collections.abc import Iterator
@@ -10,10 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 from os import PathLike
 from pathlib import Path
-from typing import Literal
 from zipfile import ZipFile
-
-import websockets
 
 
 @contextmanager
