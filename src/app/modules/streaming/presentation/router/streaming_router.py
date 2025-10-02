@@ -13,7 +13,7 @@ from app.modules.streaming.presentation.dto import CardiotocographyPointDTO, Pro
 streaming_router = APIRouter()
 
 
-@streaming_router.websocket("")
+@streaming_router.websocket("/")
 async def frontend_ws(
         websocket: WebSocket,
         get_fetal_monitoring_handler: FetalMonitoringHandler = Depends(get_fetal_monitoring_handler)
@@ -22,6 +22,7 @@ async def frontend_ws(
     try:
         while True:
             points: list[CardiotocographyPoint] = await signal_queue.get()
+            print(points)
             ml_res: Process = get_fetal_monitoring_handler.process_stream(points)
             process_dto = ProcessDTO.model_validate(asdict(ml_res))
 
@@ -32,4 +33,4 @@ async def frontend_ws(
                     "process": process_dto.model_dump()
                 })
     except WebSocketDisconnect:
-        await websocket.close()
+        pass
