@@ -10,3 +10,7 @@ async def get_patient(patient_id: int, patient_repo: PatientPort) -> Patient:
     patient.additional_info = await patient_repo.get_additional_info(patient_id)
 
     return patient
+
+
+async def get_all_patients(patient_repo: PatientPort) -> list[Patient]:
+    return await patient_repo.get_all()

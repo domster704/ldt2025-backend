@@ -57,3 +57,15 @@ class PatientRepository(PatientPort):
         )
         res = await self._session.execute(stmt, {"patient_id": patient_id})
         return res.scalars().all()
+
+    async def get_all(self) -> Sequence[Patient]:
+        stmt = text("SELECT * FROM patients")
+        res = await self._session.execute(stmt)
+        rows = res.fetchall()
+        return [
+            Patient(
+                id=row[0],
+                fio=row[1],
+            )
+            for row in rows
+        ]
