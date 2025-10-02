@@ -1,10 +1,8 @@
 import httpx
-from dishka.integrations.fastapi import FromDishka
-from fastapi import APIRouter, UploadFile, HTTPException, File, Depends
+from fastapi import APIRouter, UploadFile, HTTPException, File
 from starlette import status
 
-from app.common.settings import AppSettings, app_settings
-from app.modules.core.infra.provider import get_container
+from app.common.settings import app_settings
 
 router = APIRouter()
 
