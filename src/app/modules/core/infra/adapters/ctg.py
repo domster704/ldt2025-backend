@@ -1,3 +1,5 @@
+import datetime
+
 from sqlalchemy import text, bindparam
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,30 +12,37 @@ class CTGRepository(CTGPort):
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def list_ctg(self, ctg_ids: list[int]) -> list[CTGResult]:
+    async def list_ctg(self, ctg_ids: list[int]) -> list[CTGHistory]:
         stmt = text(
             """
-            SELECT * FROM ctg_results WHERE ctg_results.ctg_id IN :ids
+            SELECT *
+            FROM ctg_history
+            WHERE ctg_history.id IN :ids
             """
         ).bindparams(bindparam("ids", expanding=True))
 
         res = (await self._session.execute(stmt, {"ids": ctg_ids})).all()
 
-        ctg_results = [
-            CTGResult(
-                *row[1:]
+        ctg_history = [
+            CTGHistory(
+                id=row[0],
+                file_path=row[2],
+                archive_path=row[3]
             )
             for row in res
         ]
-        return ctg_results
+        return ctg_history
 
     async def list_results(self, ctg_ids: list[int]) -> list[CTGResult]:
         stmt = text(
             """
-            SELECT * FROM ctg_results WHERE ctg_results.ctg_id IN :ids
+            SELECT *
+            FROM ctg_results
+            WHERE ctg_results.ctg_id IN :ids
             """
-        )
-        res = await self._session.execute(stmt, {"ids": tuple(ctg_ids)})
+        ).bindparams(bindparam("ids", expanding=True))
+
+        res = (await self._session.execute(stmt, {"ids": ctg_ids})).all()
         ctg_results = [
             CTGResult(
                 ctg_id=row[1], gest_age=row[2], bpm=row[3], uc=row[4], figo=row[5], figo_prognosis=row[6],
@@ -41,18 +50,17 @@ class CTGRepository(CTGPort):
                 stv=row[11], stv_little=row[12], accellations=row[13], deceleration=row[14],
                 uterine_contractions=row[15], fetal_movements=row[16], fetal_movements_little=row[17],
                 accellations_little=row[18], deceleration_little=row[19], high_variability=row[20],
-                low_variability=row[21], loss_signals=row[22], timestamp=row[23]
+                low_variability=row[21], loss_signals=row[22], timestamp=datetime.datetime.fromisoformat(row[23])
             )
-            for row in res.all()
+            for row in res
         ]
         return ctg_results
 
     async def add_history(self, ctg_history: CTGHistory, patient_id: int) -> int | None:
         stmt = text(
             """
-            INSERT INTO ctg_history (patient_id, file_path, archive_path) VALUES
-            (:patient_id, :file_path, :archive_path)
-            RETURNING id
+            INSERT INTO ctg_history (patient_id, file_path, archive_path)
+            VALUES (:patient_id, :file_path, :archive_path) RETURNING id
             """
         )
         id = (await self._session.execute(
@@ -69,6 +77,6 @@ class CTGRepository(CTGPort):
     async def add_result(self, ctg_result: CTGResult, ctg_id: int) -> None:
         stmt = text(
             """
-            INSERT into ctg_results (ctg_id, created_at) 
+            INSERT into ctg_results (ctg_id, created_at)
             """
         )
