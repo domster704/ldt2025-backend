@@ -25,7 +25,7 @@ async def get_patient_info(patient_id: int, patient_repo: FromDishka[PatientPort
 
 @router.get('/patients')
 @inject
-async def get_all_patients(patient_repo: FromDishka[PatientPort]) -> list[Patient]:
+async def get_all_patients_endpoint(patient_repo: FromDishka[PatientPort]) -> list[Patient]:
     try:
         patients = await get_all_patients(patient_repo)
     except NotFoundObject:
