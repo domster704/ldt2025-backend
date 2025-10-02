@@ -87,8 +87,8 @@ def upgrade() -> None:
             comment='Идентификатор пациента'
         ),
         sa.Column(
-            'file_path', sa.String(length=255), nullable=False,
-            comment='Путь к файлу с показателями КТГ'
+            'dir_path', sa.String(length=255), nullable=False,
+            comment='Путь к директории с показателями КТГ'
         ),
         sa.Column(
             'archive_path', sa.String(length=255), nullable=True,

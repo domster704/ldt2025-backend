@@ -14,21 +14,21 @@ async def make_file_logger(log_dir_path: str, patient_id: int | None) -> Callabl
     i = 1
     file: TextIOWrapper = None
     base_dir = os.path.join(log_dir_path, str(patient_id)) if patient_id is not None else log_dir_path
+    if patient_id:
+        container = get_container('async')
+        async with container() as di:
+            ctg_repo = await di.get(CTGPort)
+        await ctg_repo.add_history(CTGHistory(
+            id=None,
+            dir_path=base_dir,
+            archive_path=None
+        ), patient_id)
 
     async def open_new_file() -> None:
         nonlocal file, i
         file_name = datetime.now().strftime("%Y_%m_%d_%H%M_") + str(i) + "-ctg-log.csv"
         os.makedirs(base_dir, exist_ok=True)
         file = open(os.path.join(base_dir, file_name), "a", buffering=100)
-        if patient_id:
-            container = get_container('async')
-            async with container() as di:
-                ctg_repo = await di.get(CTGPort)
-            await ctg_repo.add_history(CTGHistory(
-                id=None,
-                file_path=os.path.join(base_dir, file_name),
-                archive_path=None
-            ), patient_id)
         file.write("timestamp,bpm,uc\n")
 
     def close() -> None:

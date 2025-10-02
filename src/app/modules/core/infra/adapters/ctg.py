@@ -20,7 +20,7 @@ class CTGRepository(CTGPort):
         ctgs = [
             CTGHistory(
                 id=row[0],
-                file_path=row[2],
+                dir_path=row[2],
                 archive_path=row[3]
             )
             for row in res.all()
@@ -57,7 +57,7 @@ class CTGRepository(CTGPort):
             stmt,
             {
                 "patient_id": patient_id,
-                "file_path": ctg_history.file_path,
+                "file_path": ctg_history.dir_path,
                 "archive_path": ctg_history.archive_path,
             }
         )
