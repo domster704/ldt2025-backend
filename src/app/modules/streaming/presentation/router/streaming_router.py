@@ -32,9 +32,11 @@ async def frontend_ws(
     try:
         while True:
             points: list[CardiotocographyPoint] = await signal_queue.get()
-            ml_res: Process = get_fetal_monitoring_handler.process_stream(points)
+            if points == [{'type': 'end'}]:
+                await get_fetal_monitoring_handler.finalize()
+            else:
+                ml_res: Process = get_fetal_monitoring_handler.process_stream(points)
             process_dto = ProcessDTO.model_validate(asdict(ml_res))
-            print(process_dto)
 
             for point in points:
                 dto = CardiotocographyPointDTO(**asdict(point))

@@ -15,7 +15,7 @@ async def extract_bpm_uc_signals(
 ):
     try:
         content = await archive.read()
-        async with httpx.AsyncClient(base_url=str(app_settings.emulator_uri)[:-1]) as client:
+        async with httpx.AsyncClient(base_url=str(app_settings.emulator_uri)[:-1], timeout=None) as client:
             resp = await client.post(
                 '/start',
                 files={"archive": content}

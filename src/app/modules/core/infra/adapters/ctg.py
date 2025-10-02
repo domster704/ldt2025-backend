@@ -45,21 +45,24 @@ class CTGRepository(CTGPort):
         ]
         return ctg_results
 
-    async def add_history(self, ctg_history: CTGHistory, patient_id: int) -> None:
+    async def add_history(self, ctg_history: CTGHistory, patient_id: int) -> int | None:
         stmt = text(
             """
-            INSERT INTO ctg_history (patient_id, file_path, archive_path) VALUES (:patient_id, :file_path, :archive_path)
+            INSERT INTO ctg_history (patient_id, file_path, archive_path) VALUES
+            (:patient_id, :file_path, :archive_path)
+            RETURNING id
             """
         )
-        await self._session.execute(
+        id = (await self._session.execute(
             stmt,
             {
                 "patient_id": patient_id,
                 "file_path": ctg_history.file_path,
                 "archive_path": ctg_history.archive_path,
             }
-        )
+        )).scalar_one()
         await self._session.commit()
+        return id
 
     async def add_result(self, ctg_result: CTGResult, ctg_id: int) -> None:
         stmt = text(
