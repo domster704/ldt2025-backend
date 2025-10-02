@@ -33,7 +33,9 @@ async def analyze(
     df = pd.DataFrame(result_list).sort_values(by="day")
     print(df.head())
     try:
-        return fetal_monitoring_handler.fetal_monitoring_service.analyze_patient_dynamics(df)
+        return {
+            "analysis": fetal_monitoring_handler.fetal_monitoring_service.analyze_patient_dynamics(df)
+        }
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail="Could not analyze patient")
