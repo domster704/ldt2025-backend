@@ -510,9 +510,6 @@ class FetalMonitoringService(IFetalMonitoring):
     # ====== Главный метод стриминга ======
 
     def process_stream(self, df) -> Process | None:
-        """
-        Вызывается раз в секунду. Обновляет внутреннее состояние и отдаёт last_notification.
-        """
         self.streaming_last_second += 1
         now_t = self.streaming_last_second
 
@@ -615,17 +612,6 @@ class FetalMonitoringService(IFetalMonitoring):
         return float(np.nanmean(stvs)) if stvs else np.nan
 
     def finalize_process(self) -> ProcessResults:
-        """
-        Итоговые метрики по накопленным данным.
-        Возвращает dict:
-          - last_figo
-          - baseline_bpm (10 мин медиана на конце)
-          - stv_all (по всей записи)
-          - stv_10min_mean (среднее по всем 10-мин окнам)
-          - accelerations_count
-          - decelerations_count
-          - uterus_mean
-        """
         if self.current_df is None or self.current_df.empty:
 
             return ProcessResults(
@@ -685,3 +671,48 @@ class FetalMonitoringService(IFetalMonitoring):
             decelerations_count=int(decelerations_count),
             uterus_mean=uterus_mean,
         )
+
+    @staticmethod
+    def analyze_patient_dynamics(df: pd.DataFrame) -> str:
+        notes = []
+
+        last_baseline = df["baseline_bpm"].iloc[-1]
+        if last_baseline > 160:
+            notes.append("Повышенная базальная ЧСС (тахикардия)")
+        elif last_baseline < 110:
+            notes.append("Пониженная базальная ЧСС (брадикардия)")
+        else:
+            notes.append("Базальная ЧСС в норме")
+
+        last_stv = df["stv_all"].iloc[-1]
+        if last_stv < 3:
+            notes.append("Низкая STV, возможный риск гипоксии")
+        elif last_stv > 6:
+            notes.append("Высокая вариабельность")
+        else:
+            notes.append("STV в пределах нормы")
+
+        acc = df["accelerations_count"].iloc[-1]
+
+        if acc >= 3:
+            notes.append(f"Наблюдаются акцелерации ({acc} за день)")
+        else:
+            notes.append("Акцелерации незначительные")
+
+        X = np.arange(len(df)).reshape(-1, 1)
+        y = df["baseline_bpm"].values
+        model = LinearRegression().fit(X, y)
+
+        slope = model.coef_[0]
+        if slope > 0.6:
+            notes.append(f"Тренд на повышение базальной ЧСС (+{slope:.2f} уд/мин в день)")
+        elif slope > 0.1:
+            notes.append(f"Небольшой тренд на повышение базальной ЧСС (+{slope:.2f} уд/мин в день)")
+        elif slope < -0.6:
+            notes.append(f"Тренд на снижение базальной ЧСС ({slope:.2f} уд/мин в день)")
+        elif slope < -0.1:
+            notes.append(f"Небольшой тренд на снижение базальной ЧСС ({slope:.2f} уд/мин в день)")
+        else:
+            notes.append("Тренд базальной ЧСС стабильный")
+
+        return " | ".join(notes)
