@@ -6,7 +6,7 @@ from typing import Callable, Any, Awaitable
 
 from app.common.ctg import CurrentCtgID
 from app.modules.core.domain.ctg import CTGHistory
-from app.modules.core.infra.provider import get_container
+from app.common.provider import get_container
 from app.modules.core.usecases.ports.ctg import CTGPort
 from app.modules.ingest.entities.ctg import CardiotocographyPoint
 

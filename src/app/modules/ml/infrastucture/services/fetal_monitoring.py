@@ -623,7 +623,6 @@ class FetalMonitoringService(IFetalMonitoring):
                 decelerations_count=0,
                 uterus_mean=None,
             )
-
         # Последнее FIGO уже поддерживается онлайном
         last_figo = self.last_notification.get("figo_situation")
 

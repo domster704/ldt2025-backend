@@ -70,6 +70,10 @@ def upgrade() -> None:
             'blood_gas_be', sa.Float(), nullable=True,
             comment='Базовый избыток, показатель кислотно-щелочного баланса'
         ),
+        sa.Column(
+            'anamnesis', sa.Text(), nullable=True,
+            comment='Анамнез'
+        ),
         UniqueConstraint('id', 'patient_id'),
         comment='Информация о пациенте',
     )
