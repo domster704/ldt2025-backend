@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import uvicorn
 import websockets
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 
 from emulator.sending_signals import sending_signals
@@ -20,16 +20,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+current_task: asyncio.Task | None = None
+
 
 @app.post("/start")
-async def start(archive: UploadFile = File(...), background_tasks: BackgroundTasks = None):
-    content = await archive.read()
+async def start(archive: UploadFile = File(...)):
+    global current_task
 
+    if current_task and not current_task.done():
+        current_task.cancel()
+        try:
+            await current_task
+        except asyncio.CancelledError:
+            print("Предыдущая эмуляция остановлена")
+
+    content = await archive.read()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
         tmp.write(content)
         tmp_path = tmp.name
 
-    background_tasks.add_task(run_emulation, tmp_path)
+    current_task = asyncio.create_task(run_emulation(tmp_path))
 
     return {"status": "started"}
 

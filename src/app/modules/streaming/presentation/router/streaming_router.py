@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import asdict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -13,18 +14,27 @@ from app.modules.streaming.presentation.dto import CardiotocographyPointDTO, Pro
 streaming_router = APIRouter()
 
 
+async def clear_queue(q: asyncio.Queue):
+    while not q.empty():
+        try:
+            q.get_nowait()
+        except Exception:
+            break
+
+
 @streaming_router.websocket("/")
 async def frontend_ws(
         websocket: WebSocket,
         get_fetal_monitoring_handler: FetalMonitoringHandler = Depends(get_fetal_monitoring_handler)
 ):
     await websocket.accept()
+    await clear_queue(signal_queue)
     try:
         while True:
             points: list[CardiotocographyPoint] = await signal_queue.get()
-            print(points)
             ml_res: Process = get_fetal_monitoring_handler.process_stream(points)
             process_dto = ProcessDTO.model_validate(asdict(ml_res))
+            print(process_dto)
 
             for point in points:
                 dto = CardiotocographyPointDTO(**asdict(point))
