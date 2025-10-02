@@ -1,9 +1,10 @@
 import httpx
 from dishka.integrations.fastapi import FromDishka
-from fastapi import APIRouter, UploadFile, HTTPException, File
+from fastapi import APIRouter, UploadFile, HTTPException, File, Depends
 from starlette import status
 
-from app.common.settings import AppSettings
+from app.common.settings import AppSettings, app_settings
+from app.modules.core.infra.provider import get_container
 
 router = APIRouter()
 
@@ -12,13 +13,11 @@ router = APIRouter()
     description="Запуск эмулятора"
 )
 async def extract_bpm_uc_signals(
-        app_settings: FromDishka[AppSettings],
         archive: UploadFile = File(...),
 ):
     try:
         content = await archive.read()
-
-        async with httpx.AsyncClient(base_url=app_settings.emulator_uri) as client:
+        async with httpx.AsyncClient(base_url=str(app_settings.emulator_uri)[:-1]) as client:
             resp = await client.post(
                 '/start',
                 files={"file": (archive.filename, content, archive.content_type)}

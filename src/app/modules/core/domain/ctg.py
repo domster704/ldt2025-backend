@@ -32,7 +32,7 @@ class CTGResult:
 
 @dataclass(slots=True)
 class CTGHistory:
-    id: int
+    id: int | None
     file_path: PathLike
     archive_path: PathLike | None
     result: CTGResult | None = None

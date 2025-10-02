@@ -11,7 +11,10 @@ import orjson
 from fastapi import APIRouter
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
+from app.common.patient import CurrentPatientID
 from app.modules.ingest.entities.ctg import CardiotocographyPoint
+from app.modules.ingest.infra.file_logger import make_file_logger
+from app.modules.ingest.infra.multiplexer import Multiplexer
 from app.modules.ingest.infra.queue import signal_queue
 
 router = APIRouter()
@@ -181,6 +184,7 @@ async def forwarder(payload_list: list[CardiotocographyPoint]) -> None:
 
 async def processing_loop(
         queue: asyncio.Queue[Sample],
+        mux: Multiplexer,
         fs: int = FS,
 ) -> None:
     """Основной цикл обработки сигналов.
@@ -189,6 +193,7 @@ async def processing_loop(
     Если данных нет, повторяет последнее значение.
 
     Args:
+        mux (Multiplexer): Мультиплексор
         queue (asyncio.Queue[Sample]): Очередь входных сэмплов.
         fs (int, optional): Количество выборок на секунду. По умолчанию 5.
     """
@@ -242,7 +247,7 @@ async def processing_loop(
                             uc=s.uterus,
                         )
                         payload_list.append(payload)
-                    await forwarder(payload_list)
+                    await mux.send(payload_list)
                     last_value = data[-1]
                     # print('============')
 
@@ -253,7 +258,7 @@ async def processing_loop(
             break
 
 
-@router.websocket("/input_signal")
+@router.websocket("/input-signal")
 async def ingest_medical_signals(websocket: WebSocket) -> None:
     """WebSocket-эндпоинт для приёма медицинских сигналов.
 
@@ -269,8 +274,14 @@ async def ingest_medical_signals(websocket: WebSocket) -> None:
     processing_task: asyncio.Task | None = None
     processor = SignalProcessor()
 
+    file_logger = await make_file_logger(
+        '/tmp/ctg_logs',
+        None if CurrentPatientID.is_empty() else CurrentPatientID.get()
+    )
+    mux = Multiplexer(forwarder, file_logger)
+
     try:
-        processing_task = asyncio.create_task(processing_loop(queue))
+        processing_task = asyncio.create_task(processing_loop(queue, mux))
 
         while True:
             raw = await websocket.receive_text()
@@ -280,7 +291,7 @@ async def ingest_medical_signals(websocket: WebSocket) -> None:
                 continue
 
             if msg.get("type") == "end":
-                await forwarder({"type": "end"})
+                await mux.send([{"type": "end"}])
                 break
 
             if msg.get("type") != "signal":
