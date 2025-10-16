@@ -1,14 +1,14 @@
 from sqlalchemy import Table, Column, Integer, String, ForeignKey, Float
 
-from ..tables.base import metadata
+from .base import metadata
 
-patients = Table(
+patients_table = Table(
     "patients", metadata,
     Column("id", Integer, primary_key=True),
     Column("full_name", String, nullable=False),
 )
 
-patient_info = Table(
+patient_info_table = Table(
     "patient_info", metadata,
     Column("id", Integer, primary_key=True),
     Column("patient_id", Integer, ForeignKey("patients.id"), nullable=False),

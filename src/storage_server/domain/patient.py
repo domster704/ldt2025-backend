@@ -4,11 +4,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.modules.core.domain.patient import Patient
+from .mixin import DataclassMixin
 
 
 @dataclass(frozen=True, slots=True)
-class PatientAdditionalInfo:
+class PatientAdditionalInfo(DataclassMixin):
     diagnosis: str | None
     blood_gas_ph: float | None
     blood_gas_co2: float | None
@@ -17,11 +17,8 @@ class PatientAdditionalInfo:
     blood_gas_be: float | None
     anamnesis: str | None
 
-    def to_dict(self) -> dict[str, Any]:
-        return self.__dict__
-
 @dataclass(frozen=True, slots=True)
-class Patient:
+class Patient(DataclassMixin):
     id: int | None
     full_name: str
     additional_info: PatientAdditionalInfo | None = None
@@ -29,19 +26,12 @@ class Patient:
     def has_additional_info(self) -> bool:
         return self.additional_info is not None
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "full_name": self.full_name,
-            "additional_info": self.additional_info.to_dict(),
-        }
-
     @staticmethod
-    def from_db_row(row: Mapping[str, Any]) -> Patient:
+    def from_db_row(row: Mapping[str, Any]) -> 'Patient':
         return Patient(**row)
 
     @staticmethod
-    def from_dto(dto: BaseModel) -> Patient:
+    def from_dto(dto: BaseModel) -> 'Patient':
         data = dto.model_dump()
 
         add = data.get("additional_info")

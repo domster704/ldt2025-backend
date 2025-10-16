@@ -1,6 +1,6 @@
-from asyncio import Protocol
+from typing import Protocol
 
-from storage_server.domain.patient import Patient
+from ...domain.patient import Patient
 
 
 class PatientRepository(Protocol):
