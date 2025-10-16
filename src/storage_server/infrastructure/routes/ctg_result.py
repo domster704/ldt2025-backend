@@ -2,32 +2,32 @@ from dishka import FromDishka
 from fastapi import APIRouter, HTTPException
 from starlette import status
 
-from ...application.dto.ctg_history import CTGHistoryAddInDTO, CTGHistoryReadOutDTO
+from ...application.dto.ctg_result import CTGResultReadOutDTO, CTGResultAddInDTO
 from ...application.exceptions.application import UnexpectedError
-from ...application.ports.ctg_history_repo import CTGHistoryRepository
-from ...application.read_history import read_ctg_history
-from ...application.save_ctg_history import save_ctg_history
+from ...application.ports.ctg_result_repo import CTGResultRepository
+from ...application.read_ctg_result import read_ctg_result
+from ...application.save_ctg_result import save_ctg_result
 
 router = APIRouter()
 
 
 @router.post("")
-async def get_ctg_history(
-        patient_id: int, ctg_history_repo: FromDishka[CTGHistoryRepository]
-) -> list[CTGHistoryReadOutDTO]:
+async def get_ctg_result(
+        ctg_id: int, ctg_result_repo: FromDishka[CTGResultRepository]
+) -> list[CTGResultReadOutDTO]:
     try:
-        return await read_ctg_history(patient_id, ctg_history_repo)
+        return await read_ctg_result(ctg_id, ctg_result_repo)
     except UnexpectedError:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Unexpected error')
     except Exception:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @router.put("")
-async def create_ctg_history(
-        body: CTGHistoryAddInDTO, ctg_history_repo: FromDishka[CTGHistoryRepository]
+async def create_ctg_result(
+        body: CTGResultAddInDTO, ctg_result_repo: FromDishka[CTGResultRepository]
 ) -> None:
     try:
-        await save_ctg_history(body, ctg_history_repo)
+        await save_ctg_result(body, ctg_result_repo)
     except UnexpectedError:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Unexpected error')
     except Exception:
