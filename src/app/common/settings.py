@@ -33,7 +33,7 @@ class HTTPServerSettings(BaseSettings):
             case RunMode.TEST:
                 return ['*']
             case RunMode.DEV:
-                return ['*']
+                return ['https://front.lct2025.ln-kr.ru/']
             case _:
                 raise InitializationError(f'Unsupported RUN_MODE: {self.RUN_MODE}')
 
