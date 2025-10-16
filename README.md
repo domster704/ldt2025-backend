@@ -44,7 +44,7 @@ flowchart LR
 
     subgraph Backend ["Backend (FastAPI)"]
         API["REST API + WebSocket"]
-        DB[("PostgreSQL/SQLite")]
+        DB[("SQLite")]
         ML["ML Engine (PyTorch, Sklearn)"]
         MIGR["Alembic (миграции)"]
     end
