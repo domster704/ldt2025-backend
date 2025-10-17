@@ -1,0 +1,2 @@
+class ArchiveNotFound(Exception):
+    pass

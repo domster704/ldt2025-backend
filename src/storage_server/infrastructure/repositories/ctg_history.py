@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import AsyncIterable
 
 from sqlalchemy import select
@@ -25,6 +26,17 @@ class SQLAlchemyCTGHistoryRepository(CTGHistoryRepository):
         for row in rows:
             patient = CTGHistory.from_db_row(row._mapping)
             yield patient
+
+    async def get_archive_path(self, patient_id: int) -> Path:
+        stmt = (
+            select(ctg_history_table.c.archive_path)
+            .where(ctg_history_table.c.patient_id == patient_id)
+        )
+
+        result = await self._session.execute(stmt)
+
+        archive_path = Path(result.scalar_one())
+        return archive_path
 
     async def save(self, patient_id: int, ctg_history: CTGHistory) -> None:
         ctg_history_dict = ctg_history.to_dict()

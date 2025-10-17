@@ -1,5 +1,6 @@
 from enum import Enum
 from functools import cached_property
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,6 +18,7 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')
 
     run_mode: RunMode = 'dev'
+    archive_base_dir: Path
 
     def is_dev(self) -> bool:
         return self.run_mode == RunMode.DEV
