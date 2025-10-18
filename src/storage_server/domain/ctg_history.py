@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, fields
 from typing import Mapping, Any
 
 from pydantic import BaseModel
@@ -10,12 +9,15 @@ from .mixin import DataclassMixin
 @dataclass(frozen=True, slots=True)
 class CTGHistory(DataclassMixin):
     id: int | None
-    file_path_in_archive: Path
-    archive_path: Path
+    file_path_in_archive: str
+    archive_path: str
 
-    @staticmethod
-    def from_db_row(row: Mapping[str, Any]) -> 'CTGHistory':
-        return CTGHistory(**row)
+    @classmethod
+    def from_db(cls, data: Mapping[str, Any]) -> 'CTGHistory':
+        allowed = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in allowed}
+
+        return CTGHistory(**filtered)
 
     @staticmethod
     def from_dto(model: BaseModel) -> 'CTGHistory':

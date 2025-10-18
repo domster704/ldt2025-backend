@@ -1,39 +1,45 @@
+from dataclasses import fields
 from typing import Mapping, Any
 
-from attr import dataclass
+from dataclasses import dataclass
 from pydantic import BaseModel
 
 from storage_server.domain.mixin import DataclassMixin
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True, slots=True)
 class CTGResult(DataclassMixin):
-    id: int | None
-    slope_bpm_min: float
-    sdnn: float
-    rmssd: float
-    pnn5: float
-    baseline_med: float
-    vmin: float
-    vmax: float
-    missing_ratio: float
-    est_fs: float
+    ctg_id: int | None
+    gest_age: str
+    bpm: float
+    uc: float
+    figo: str
+    figo_prognosis: str
+    bhr: float
+    amplitude_oscillations: float
+    oscillation_frequency: float
+    ltv: int
+    stv: int
+    stv_little: int
+    accelerations: int
+    decelerations: int
+    uterine_contractions: int
+    fetal_movements: int
+    fetal_movements_little: int
+    accelerations_little: int
+    deceleration_little: int
+    high_variability: int
+    low_variability: int
+    loss_signals: float
 
-    @staticmethod
-    def from_db_row(row: Mapping[str, Any]) -> 'CTGResult':
-        return CTGResult(**row)
+    @classmethod
+    def from_db(cls, data: Mapping[str, Any]) -> 'CTGResult':
+        allowed = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in allowed}
+
+        return CTGResult(**filtered)
 
     @staticmethod
     def from_dto(model: BaseModel) -> 'CTGResult':
         data = model.model_dump()
-        return CTGResult(
-            slope_bpm_min = data.get("slope_bpm_min"),
-            sdnn = data.get("sdnn"),
-            rmssd = data.get("rmssd"),
-            pnn5 = data.get("pnn5"),
-            baseline_med = data.get("baseline_med"),
-            vmin = data.get("vmin"),
-            vmax = data.get("vmax"),
-            missing_ratio = data.get("missing_ratio"),
-            est_fs = data.get("est_fs")
-        )
+        return CTGResult(**data)

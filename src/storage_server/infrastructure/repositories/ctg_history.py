@@ -24,7 +24,7 @@ class SQLAlchemyCTGHistoryRepository(CTGHistoryRepository):
 
         rows = result.all()
         for row in rows:
-            patient = CTGHistory.from_db_row(row._mapping)
+            patient = CTGHistory.from_db(row._mapping)
             yield patient
 
     async def get_archive_path(self, patient_id: int) -> Path:
@@ -35,7 +35,7 @@ class SQLAlchemyCTGHistoryRepository(CTGHistoryRepository):
 
         result = await self._session.execute(stmt)
 
-        archive_path = Path(result.scalar_one())
+        archive_path = Path(result.scalars().first())
         return archive_path
 
     async def save(self, patient_id: int, ctg_history: CTGHistory) -> None:
@@ -44,7 +44,7 @@ class SQLAlchemyCTGHistoryRepository(CTGHistoryRepository):
 
         stmt = (
             insert(ctg_history_table)
-            .values({"id": patient_id, **ctg_history_dict})
+            .values({"patient_id": patient_id, **ctg_history_dict})
         )
         await self._session.execute(stmt)
         await self._session.commit()

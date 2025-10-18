@@ -9,8 +9,8 @@ async def read_ctg_result(
     ctg_results = []
     try:
         async for ctg_result in ctg_history_repo.read_by_ctg_id(ctg_id):
-            ctg_results.append(CTGResultReadOutDTO.model_validate(ctg_result))
-    except Exception:
+            ctg_results.append(CTGResultReadOutDTO.model_validate(ctg_result.to_dict()))
+    except Exception as err:
         raise UnexpectedError
 
     return ctg_results

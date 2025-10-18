@@ -1,17 +1,18 @@
-from dishka import FromDishka
+from dishka.integrations.fastapi import inject, FromDishka
 from fastapi import APIRouter, HTTPException
 from starlette import status
 
-from ...application.dto.ctg_result import CTGResultReadOutDTO, CTGResultAddInDTO
-from ...application.exceptions.application import UnexpectedError
-from ...application.ports.ctg_result_repo import CTGResultRepository
-from ...application.read_ctg_result import read_ctg_result
-from ...application.save_ctg_result import save_ctg_result
+from storage_server.application.dto.ctg_result import CTGResultReadOutDTO, CTGResultAddInDTO
+from storage_server.application.exceptions.application import UnexpectedError
+from storage_server.application.ports.ctg_result_repo import CTGResultRepository
+from storage_server.application.read_ctg_result import read_ctg_result
+from storage_server.application.save_ctg_result import save_ctg_result
 
 router = APIRouter()
 
 
 @router.post("")
+@inject
 async def get_ctg_result(
         ctg_id: int, ctg_result_repo: FromDishka[CTGResultRepository]
 ) -> list[CTGResultReadOutDTO]:
@@ -23,6 +24,7 @@ async def get_ctg_result(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @router.put("")
+@inject
 async def create_ctg_result(
         body: CTGResultAddInDTO, ctg_result_repo: FromDishka[CTGResultRepository]
 ) -> None:
@@ -30,5 +32,5 @@ async def create_ctg_result(
         await save_ctg_result(body, ctg_result_repo)
     except UnexpectedError:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Unexpected error')
-    except Exception:
+    except Exception as err:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

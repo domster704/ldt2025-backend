@@ -16,7 +16,13 @@ class SQLAlchemyPatientRepository(PatientRepository):
     @override
     async def read(self, patient_id: int) -> Patient | None:
         stmt = (
-            select(patients_table)
+            select(patients_table, patient_info_table)
+            .select_from(
+                patients_table.outerjoin(
+                    patient_info_table,
+                    patient_info_table.c.patient_id == patients_table.c.id,
+                )
+            )
             .where(patients_table.c.id == patient_id)
         )
         result = await self._session.execute(stmt)
@@ -24,7 +30,7 @@ class SQLAlchemyPatientRepository(PatientRepository):
         if (patient_object := result.one_or_none()) is None:
             return None
 
-        patient = Patient.from_db_row(patient_object._mapping)
+        patient = Patient.from_db(patient_object._mapping)
         return patient
 
     @override
@@ -57,3 +63,16 @@ class SQLAlchemyPatientRepository(PatientRepository):
             await self._session.execute(stmt_patient_add_info, )
 
         await self._session.commit()
+
+    @override
+    async def is_exists(self, patient_id: int) -> bool:
+        stmt = (
+            select(patients_table)
+            .where(patients_table.c.id == patient_id)
+        )
+        result = await self._session.execute(stmt)
+
+        if result.one_or_none() is None:
+            return False
+
+        return True

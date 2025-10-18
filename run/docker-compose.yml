@@ -20,6 +20,7 @@ services:
       DB_DATABASE_NAME: './../app.db'
     ports:
       - "8001:${HTTP_PORT}"
+
   emulator:
     restart: unless-stopped
     build:
@@ -28,3 +29,18 @@ services:
       args:
         POETRY_VERSION: 2.1.4
         VCS_REF: "abc123"
+
+  external_db:
+    restart: unless-stopped
+    image: postgres:17.0
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: med_db
+    volumes:
+      - external-db-data-local:/var/lib/postgresql/data
+    ports:
+      - "5400:5432"
+
+volumes:
+  external-db-data-local:

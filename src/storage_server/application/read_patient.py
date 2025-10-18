@@ -14,4 +14,4 @@ async def read_patient(
     if patient is None:
         raise PatientNotFound
     else:
-        return PatientReadOutDTO.model_validate(patient)
+        return PatientReadOutDTO.model_validate(patient.to_dict())

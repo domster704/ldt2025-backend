@@ -1,10 +1,11 @@
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 from pydantic import BaseModel
 
 from .mixin import DataclassMixin
+from ..infrastructure.tables.patients import patient_info_table
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +18,13 @@ class PatientAdditionalInfo(DataclassMixin):
     blood_gas_be: float | None
     anamnesis: str | None
 
+    @classmethod
+    def from_db(cls, data: Mapping[str, Any]) -> 'PatientAdditionalInfo':
+        allowed = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in allowed}
+
+        return PatientAdditionalInfo(**filtered)
+
 @dataclass(frozen=True, slots=True)
 class Patient(DataclassMixin):
     id: int | None
@@ -26,9 +34,18 @@ class Patient(DataclassMixin):
     def has_additional_info(self) -> bool:
         return self.additional_info is not None
 
-    @staticmethod
-    def from_db_row(row: Mapping[str, Any]) -> 'Patient':
-        return Patient(**row)
+    @classmethod
+    def from_db(cls, data: Mapping[str, Any]) -> 'Patient':
+        patient_add_info = PatientAdditionalInfo.from_db(data)
+        data_dict = {
+            'additional_info': patient_add_info,
+            **data
+        }
+
+        allowed = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data_dict.items() if k in allowed}
+
+        return Patient(**filtered)
 
     @staticmethod
     def from_dto(dto: BaseModel) -> 'Patient':

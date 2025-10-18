@@ -2,25 +2,48 @@ from pydantic import BaseModel
 
 
 class CTGResultReadOutDTO(BaseModel):
-    id: int
-    slope_bpm_min: float
-    sdnn: float
-    rmssd: float
-    pnn5: float
-    baseline_med: float
-    vmin: float
-    vmax: float
-    missing_ratio: float
-    est_fs: float
+    gest_age: str
+    bpm: float
+    uc: float
+    figo: str
+    figo_prognosis: str
+    bhr: float
+    amplitude_oscillations: float
+    oscillation_frequency: float
+    ltv: int
+    stv: int
+    stv_little: int
+    accelerations: int
+    decelerations: int
+    uterine_contractions: int
+    fetal_movements: int
+    fetal_movements_little: int
+    accelerations_little: int
+    deceleration_little: int
+    high_variability: int
+    low_variability: int
+    loss_signals: float
 
 class CTGResultAddInDTO(BaseModel):
     ctg_id: int
-    slope_bpm_min: float
-    sdnn: float
-    rmssd: float
-    pnn5: float
-    baseline_med: float
-    vmin: float
-    vmax: float
-    missing_ratio: float
-    est_fs: float
+    gest_age: str
+    bpm: float
+    uc: float
+    figo: str
+    figo_prognosis: str
+    bhr: float
+    amplitude_oscillations: float
+    oscillation_frequency: float
+    ltv: int
+    stv: int
+    stv_little: int
+    accelerations: int
+    decelerations: int
+    uterine_contractions: int
+    fetal_movements: int
+    fetal_movements_little: int
+    accelerations_little: int
+    deceleration_little: int
+    high_variability: int
+    low_variability: int
+    loss_signals: float

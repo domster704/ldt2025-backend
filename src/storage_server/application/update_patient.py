@@ -7,5 +7,5 @@ async def update_patient(patient_dto: PatientUpdateInDTO, patient_repo: PatientR
     patient = Patient.from_dto(patient_dto)
     try:
         await patient_repo.save(patient)
-    except Exception:
-        raise UnexpectedError
+    except Exception as err:
+        raise UnexpectedError from err

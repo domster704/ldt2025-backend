@@ -4,7 +4,6 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.common.settings import app_settings
 
 class InitializationError(Exception):
     pass
@@ -18,21 +17,25 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')
 
     run_mode: RunMode = 'dev'
-    archive_base_dir: Path
+    archive_base_dir: Path = Path(__file__).parents[2] / 'archives'
 
     def is_dev(self) -> bool:
         return self.run_mode == RunMode.DEV
 
 class HTTPServerSettings(BaseSettings):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._run_mode = kwargs.get('run_mode', RunMode.DEV.value)
+
     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')
 
-    http_host: str = "0.0.0.0"
-    http_port: int = 8000
+    host: str = "0.0.0.0"
+    port: int = 8003
     api_version: str
 
     @cached_property
     def origins(self):
-        match app_settings.run_mode:
+        match self._run_mode:
             case RunMode.PROD:
                 return ['*']
             case RunMode.TEST:

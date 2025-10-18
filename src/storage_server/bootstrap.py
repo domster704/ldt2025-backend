@@ -1,12 +1,15 @@
+from typing import Any
+
 import structlog
+from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from .infrastructure.routes import ROUTERS
-from .logger import setup_logger
-from .middlewares import HTTPLogMiddleware
-from .di_container import sync_container
-from .settings import HTTPServerSettings, AppSettings
+from storage_server.infrastructure.routes import ROUTERS
+from storage_server.logger import setup_logger
+from storage_server.middlewares import HTTPLogMiddleware
+from storage_server.di_container import sync_container, async_container
+from storage_server.settings import HTTPServerSettings, AppSettings
 
 
 def create_server(http_server_settings: HTTPServerSettings, app_settings: AppSettings) -> FastAPI:
@@ -41,10 +44,15 @@ def create_server(http_server_settings: HTTPServerSettings, app_settings: AppSet
     return app
 
 
-def bootstrap() -> FastAPI:
-    http_server_settings = sync_container(HTTPServerSettings)
-    app_settings = sync_container(AppSettings)
+def bootstrap() -> tuple[FastAPI, dict[str, Any]]:
+    http_server_settings = sync_container.get(HTTPServerSettings)
+    app_settings = sync_container.get(AppSettings)
     app = create_server(http_server_settings, app_settings)
+    setup_dishka(async_container, app)
     setup_logger(app_settings.is_dev())
 
-    return app
+    return app, {
+        'host': http_server_settings.host,
+        'port': http_server_settings.port,
+        'run_mode': app_settings.run_mode,
+    }

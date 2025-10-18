@@ -9,8 +9,8 @@ if __name__ == '__main__':
     app
     uvicorn.run(
         "app.main:app",
-        host=http_server_settings.http_host,
-        port=http_server_settings.http_port,
+        host=http_server_settings.host,
+        port=http_server_settings.port,
         reload=app_settings.run_mode == RunMode.DEV,
         access_log=False,
     )

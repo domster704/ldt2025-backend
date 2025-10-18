@@ -14,9 +14,9 @@ class CTGGraphicArchive(DataclassMixin):
     @staticmethod
     def archive(dir_path: Path, archive_path: Path) -> 'CTGGraphicArchive':
         shutil.make_archive(
-            base_name=str(archive_path),
-            format=archive_path.suffix,
-            root_dir=str(dir_path)
+            base_name=str(archive_path.parent / archive_path.stem),
+            format=archive_path.suffix[1:],
+            root_dir=str(dir_path),
         )
         return CTGGraphicArchive(archive_path)
 
@@ -26,7 +26,7 @@ class CTGGraphicArchive(DataclassMixin):
             shutil.unpack_archive(
                 filename=self.archive_path,
                 extract_dir=extract_dir,
-                format=self.archive_path.suffix
+
             )
             yield extract_dir
             shutil.rmtree(extract_dir)
@@ -35,6 +35,5 @@ class CTGGraphicArchive(DataclassMixin):
                 shutil.unpack_archive(
                     filename=self.archive_path,
                     extract_dir=Path(tmp_dir),
-                    format=self.archive_path.suffix
                 )
                 yield Path(tmp_dir)

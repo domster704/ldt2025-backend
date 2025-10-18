@@ -10,8 +10,7 @@ patients_table = Table(
 
 patient_info_table = Table(
     "patient_info", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("patient_id", Integer, ForeignKey("patients.id"), nullable=False),
+    Column("patient_id", Integer, ForeignKey("patients.id"), nullable=False, primary_key=True),
     Column("diagnosis", String),
     Column("blood_gas_ph", Float),
     Column("blood_gas_co2", Float),
