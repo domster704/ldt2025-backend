@@ -33,11 +33,19 @@ class Process:
     stv_forecast: dict[str, float | None]
     median_fhr_10min: float | None
     hypoxia_proba: float | None
+    savelyeva_score: int | None
+    savelyeva_category: str | None
+    fischer_score: int | None
+    fischer_category: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class ProcessResults:
     last_figo: str | None
+    last_savelyeva: int | None
+    last_savelyeva_category: str | None
+    last_fischer: int | None
+    last_fischer_category: str | None
     baseline_bpm: float | None
     stv_all: float | None
     stv_10min_mean: float | None
