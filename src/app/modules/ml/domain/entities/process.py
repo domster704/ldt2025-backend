@@ -37,6 +37,8 @@ class Process:
     savelyeva_category: str | None
     fischer_score: int | None
     fischer_category: str | None
+    accelerations_count: int
+    decelerations_count: int
 
 
 @dataclass(frozen=True, slots=True)

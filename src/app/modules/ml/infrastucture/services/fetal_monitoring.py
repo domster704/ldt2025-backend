@@ -74,6 +74,8 @@ class StreamingPipeline:
             current_uterus=ln.get("current_uterus"),
             stv=ln.get("stv"),
             stv_forecast=ln.get("stv_forecast"),
+            accelerations_count=ln.get("accelerations_count"),
+            decelerations_count=ln.get("decelerations_count"),
             median_fhr_10min=ln.get("median_fhr_10min"),
             hypoxia_proba=ln.get("hypoxia_proba"),
         )

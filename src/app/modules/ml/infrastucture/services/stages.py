@@ -428,6 +428,12 @@ class AdvancedAccelDecelStage:
                     )
                 self.decel_active = None
 
+        accels_count = len(ctx.nc.last_notification["accelerations"])
+        decels_count = len(ctx.nc.last_notification["decelerations"])
+
+        ctx.nc.last_notification["accelerations_count"] = accels_count
+        ctx.nc.last_notification["decelerations_count"] = decels_count
+
 
 class SavelyevaScoreStage:
     """

@@ -34,6 +34,8 @@ class NotificationCenter:
             "median_fhr_10min": None,
             "current_fhr": None,
             "current_uterus": None,
+            "accelerations_count": 0,
+            "decelerations_count": 0,
             "stv": None,
             "stv_forecast": None,
             "figo_situation": None,
