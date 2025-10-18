@@ -7,11 +7,21 @@ from typing import Any, Deque, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from app.modules.ml.infrastucture.services.fetal_monitoring import (
-    HypoxiaModelConfig,
-    STVModelsConfig,
-)
 from app.modules.ml.infrastucture.services.utils import mean_last_second
+
+
+@dataclass
+class STVModelsConfig:
+    window_size: int
+    step_size: int
+    models: Dict[str, Dict[str, Any]]
+
+
+@dataclass
+class HypoxiaModelConfig:
+    model: Any
+    fs: int = 5
+    ewma_alpha: float = 0.01
 
 
 class NotificationCenter:
@@ -104,6 +114,6 @@ class StreamContext:
         df = self.current_df
         sl = df[
             (df["time_sec"] >= self.now_t - w) & (df["time_sec"] <= self.now_t)
-        ].copy()
+            ].copy()
         sl["window_time_max"] = self.now_t
         return sl

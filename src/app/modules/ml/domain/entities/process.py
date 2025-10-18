@@ -54,10 +54,3 @@ class ProcessResults:
     accelerations_count: int
     decelerations_count: int
     uterus_mean: float | None
-
-
-@dataclass(frozen=True, slots=True)
-class ProcessInputPoint:
-    time_sec: float
-    value_bpm: float
-    value_uterus: float

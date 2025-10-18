@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict, List
 
 import numpy as np
@@ -8,8 +7,8 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 from app.modules.ml.application.interfaces.fetal_monitoring import IFetalMonitoring
-from app.modules.ml.domain.entities.process import Process, ProcessResults, TimeRange
-from app.modules.ml.infrastucture.services.context import StreamContext
+from app.modules.ml.domain.entities.process import Process, ProcessResults
+from app.modules.ml.infrastucture.services.context import StreamContext, HypoxiaModelConfig
 from app.modules.ml.infrastucture.services.stages import (
     AdvancedAccelDecelStage,
     ContractionStage,
@@ -28,20 +27,6 @@ from app.modules.ml.infrastucture.services.utils import (
     median_last_seconds,
     rolling_stv_mean_10min,
 )
-
-
-@dataclass
-class STVModelsConfig:
-    window_size: int
-    step_size: int
-    models: Dict[str, Dict[str, Any]]
-
-
-@dataclass
-class HypoxiaModelConfig:
-    model: Any
-    fs: int = 5
-    ewma_alpha: float = 0.01
 
 
 class StreamingPipeline:
@@ -147,7 +132,7 @@ def finalize_results(ctx: StreamContext) -> ProcessResults:
 class FetalMonitoringService(IFetalMonitoring):
 
     def __init__(
-        self, model_hypoxia_config: Dict[str, Any], model_stv_config: Dict[str, Any]
+            self, model_hypoxia_config: Dict[str, Any], model_stv_config: Dict[str, Any]
     ):
         fs = model_hypoxia_config.get("fs", 5)
         self.ctx = StreamContext(

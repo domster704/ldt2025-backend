@@ -35,13 +35,23 @@ class ProcessDTO(BaseModel):
     current_fhr: Optional[float]
     current_uterus: Optional[float]
     stv: Optional[float]
-    stv_forecast: Optional[dict[str, Optional[float]]]  # <-- теперь допускается None
+    stv_forecast: Optional[dict[str, Optional[float]]]
     median_fhr_10min: Optional[float]
     hypoxia_proba: Optional[float]
+    savelyeva_score: Optional[int]
+    savelyeva_category: Optional[str]
+    fischer_score: Optional[int]
+    fischer_category: Optional[str]
+    accelerations_count: int
+    decelerations_count: int
 
 
 class ProcessResultsDTO(BaseModel):
     last_figo: Optional[str]
+    last_savelyeva: Optional[int]
+    last_savelyeva_category: Optional[str]
+    last_fischer: Optional[int]
+    last_fischer_category: Optional[str]
     baseline_bpm: Optional[float]
     stv_all: Optional[float]
     stv_10min_mean: Optional[float]
@@ -49,8 +59,3 @@ class ProcessResultsDTO(BaseModel):
     decelerations_count: int
     uterus_mean: Optional[float]
 
-
-class ProcessInputPointDTO(BaseModel):
-    time_sec: float
-    value_bpm: float
-    value_uterus: float
