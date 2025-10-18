@@ -21,8 +21,8 @@ class AppSettings(BaseSettings):
 class HTTPServerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')
 
-    http_host: str = "0.0.0.0"
-    http_port: int = 8000
+    host: str = "0.0.0.0"
+    port: int = 8000
     api_version: str
 
     @cached_property
