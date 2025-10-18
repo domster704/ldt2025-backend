@@ -38,6 +38,7 @@ catboost = "^1.2.8"
 alembic = "^1.16.5"
 greenlet = "^3.2.4"
 scikit-learn = "^1.7.2"
+asyncpg = "^0.30.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest          = "~8.3.5"

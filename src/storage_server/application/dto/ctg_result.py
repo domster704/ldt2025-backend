@@ -1,0 +1,49 @@
+from pydantic import BaseModel
+
+
+class CTGResultReadOutDTO(BaseModel):
+    gest_age: str
+    bpm: float
+    uc: float
+    figo: str
+    figo_prognosis: str
+    bhr: float
+    amplitude_oscillations: float
+    oscillation_frequency: float
+    ltv: int
+    stv: int
+    stv_little: int
+    accelerations: int
+    decelerations: int
+    uterine_contractions: int
+    fetal_movements: int
+    fetal_movements_little: int
+    accelerations_little: int
+    deceleration_little: int
+    high_variability: int
+    low_variability: int
+    loss_signals: float
+
+class CTGResultAddInDTO(BaseModel):
+    ctg_id: int
+    gest_age: str
+    bpm: float
+    uc: float
+    figo: str
+    figo_prognosis: str
+    bhr: float
+    amplitude_oscillations: float
+    oscillation_frequency: float
+    ltv: int
+    stv: int
+    stv_little: int
+    accelerations: int
+    decelerations: int
+    uterine_contractions: int
+    fetal_movements: int
+    fetal_movements_little: int
+    accelerations_little: int
+    deceleration_little: int
+    high_variability: int
+    low_variability: int
+    loss_signals: float
