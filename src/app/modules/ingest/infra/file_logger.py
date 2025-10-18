@@ -26,7 +26,7 @@ async def make_file_logger(log_dir_path: str, patient_id: int | None) -> Callabl
                 ctg_repo = await di.get(CTGPort)
             ctg_id = await ctg_repo.add_history(CTGHistory(
                 id=None,
-                file_path=os.path.join(base_dir, file_name),
+                dir_path=os.path.join(base_dir, file_name),
                 archive_path=None
             ), patient_id)
             CurrentCtgID.set(ctg_id)

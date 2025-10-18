@@ -50,7 +50,11 @@ def create_server() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=http_server_settings.origins,
+        allow_origins=[
+            "http://127.0.0.1:9007",
+            "http://localhost:9007",
+            "https://front.lct2025.ln-kr.ru",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
