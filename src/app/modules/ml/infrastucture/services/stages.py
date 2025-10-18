@@ -12,6 +12,8 @@ from app.modules.ml.infrastucture.services.utils import (
     slice_last_seconds,
 )
 
+from app.modules.ml.infrastucture.services.features import extract_features
+
 
 class Stage(Protocol):
     def tick(self, ctx: StreamContext) -> None: ...
@@ -125,36 +127,7 @@ class ModelsStage:
         if window_df.empty:
             return
 
-        # --- feature extraction (same as your extract_features) ---
-        fhr = window_df["value_bpm"].astype(float).values
-        uc = window_df["value_uterus"].astype(float).values
-        window_time = window_df["window_time_max"].values[0]
-
-        rr_diff = np.diff(fhr)
-        sdnn = np.std(fhr) if len(fhr) else np.nan
-        rmssd = np.sqrt(np.mean(rr_diff**2)) if len(rr_diff) > 0 else np.nan
-        pnn50 = np.mean(np.abs(rr_diff) > 50) if len(rr_diff) > 0 else np.nan
-        feats = {
-            "median_uc": np.median(uc) if len(uc) else np.nan,
-            "mean_uc": np.mean(uc) if len(uc) else np.nan,
-            "std_uc": np.std(uc) if len(uc) else np.nan,
-            "min_uc": np.min(uc) if len(uc) else np.nan,
-            "max_uc": np.max(uc) if len(uc) else np.nan,
-            "median_fhr": np.median(fhr) if len(fhr) else np.nan,
-            "mean_fhr": np.mean(fhr) if len(fhr) else np.nan,
-            "std_fhr": np.std(fhr) if len(fhr) else np.nan,
-            "min_fhr": np.min(fhr) if len(fhr) else np.nan,
-            "max_fhr": np.max(fhr) if len(fhr) else np.nan,
-            "sdnn": sdnn,
-            "rmssd": rmssd,
-            "pnn50": pnn50,
-            "uc_corr": (
-                np.corrcoef(fhr, uc)[0, 1]
-                if (len(fhr) > 1 and np.std(uc) > 0 and np.std(fhr) > 0)
-                else np.nan
-            ),
-            "window_time_max": window_time,
-        }
+        feats = extract_features(window_df)
         model_input = pd.DataFrame([feats])
 
         # --- STV forecasts ---
