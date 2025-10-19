@@ -17,7 +17,7 @@ async def make_file_logger(log_dir_path: str, patient_id: int | None) -> Callabl
 
     async def open_new_file() -> None:
         nonlocal file
-        file_name = datetime.now().strftime("%Y_%m_%d_%H%M") + "-ctg-log.csv"
+        file_name = datetime.now().strftime("%Y%m%d%H%M") + "_1.csv"
         os.makedirs(base_dir, exist_ok=True)
         file = open(os.path.join(base_dir, file_name), "a+", buffering=1)
         if patient_id:

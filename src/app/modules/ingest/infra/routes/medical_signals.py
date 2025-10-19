@@ -11,7 +11,7 @@ import orjson
 from fastapi import APIRouter
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
-from app.common.patient import CurrentPatientID
+from app.common.patient import CurrentPatient
 from app.modules.ingest.entities.ctg import CardiotocographyPoint
 from app.modules.ingest.infra.file_logger import make_file_logger
 from app.modules.ingest.infra.multiplexer import Multiplexer
@@ -278,8 +278,8 @@ async def ingest_medical_signals(websocket: WebSocket) -> None:
     processor = SignalProcessor()
 
     file_logger = await make_file_logger(
-        '/tmp/ctg_logs',
-        None if CurrentPatientID.is_empty() else CurrentPatientID.get()
+        str(CurrentPatient.get_dir()),
+        None if CurrentPatient.is_empty() else CurrentPatient.get_id()
     )
     mux = Multiplexer(forwarder, file_logger)
 
@@ -293,11 +293,11 @@ async def ingest_medical_signals(websocket: WebSocket) -> None:
             except Exception:
                 continue
 
-            if msg.get("type") == "end":
+            if msg.get_id() == "end":
                 await mux.send([{"type": "end"}])
                 break
 
-            if msg.get("type") != "signal":
+            if msg.get_id() != "signal":
                 continue
 
             sample = processor.parse(msg)

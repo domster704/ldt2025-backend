@@ -1,3 +1,8 @@
+import shutil
+import tempfile
+from pathlib import Path
+
+from app.common.patient import CurrentPatient
 from .ports.ctg_repository import CTGRepository
 from .ports.llm_gateway import LLMGateway
 from .ports.llm_message_builder import AnamnesisMessageBuilderProtocol
@@ -34,4 +39,10 @@ async def load_all_patient_info(
         archive_path = await patient_gtw.load_patient_ctg_graphics(patient_id)
         for obj in ctg_history:
                 obj.set_archive_path(archive_path)
+        with tempfile.TemporaryDirectory(delete=False) as tmp_dir:
+            shutil.unpack_archive(
+                filename=archive_path,
+                extract_dir=Path(tmp_dir),
+            )
+        CurrentPatient.set_dir(Path(tmp_dir))
         await ctg_repo.add_histories(ctg_history, patient_id)

@@ -1,9 +1,10 @@
 import datetime
 
-from sqlalchemy import text, bindparam
+from sqlalchemy import text, bindparam, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.core.domain.ctg import CTGHistory, CTGResult
+from app.modules.core.infra.tables.ctg_history import ctg_history_table
 from app.modules.core.usecases.ports.ctg_repository import CTGRepository
 
 
@@ -81,4 +82,14 @@ class SQLAlchemyCTGRepository(CTGRepository):
 
         return ids
 
-    async def add_results(self, ctg_results: list[CTGResult], patient_id: int) -> None: ...
+    async def read(self, value_id: int) -> CTGHistory | None:
+        stmt = (
+            select(ctg_history_table)
+            .where(ctg_history_table.c.id == value_id)
+        )
+        res = (await self._session.execute(stmt)).one_or_none()
+
+        if res is None:
+            return None
+
+        return CTGHistory.from_db(res._mapping)

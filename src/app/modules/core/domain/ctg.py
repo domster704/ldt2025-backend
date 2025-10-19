@@ -66,3 +66,10 @@ class CTGHistory:
 
     def set_archive_path(self, archive_path: PathLike) -> None:
         self.archive_path = archive_path
+
+    @classmethod
+    def from_db(cls, data: Mapping[str, Any]) -> 'CTGHistory':
+        allowed = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in allowed}
+
+        return CTGHistory(**filtered)

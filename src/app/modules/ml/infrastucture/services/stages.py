@@ -493,12 +493,12 @@ class SavelyevaScoreStage:
         if not recent:
             return 2  # отсутствуют
         # если есть ранние и нет поздних/вариабельных → 2
-        if all(d.get("type") == "early" for d in recent):
+        if all(d.get_id() == "early" for d in recent):
             return 2
         # если есть поздние краткие/вариабельные → 1
         # считаем «краткой» < 60 с
         if any(
-            (d.get("type") in ("late", "variable")) and d.get("dur_s", 0) < 60
+                (d.get_id() in ("late", "variable")) and d.get_id() < 60
             for d in recent
         ):
             return 1
@@ -642,9 +642,9 @@ class FisherClassicStage:
         ]
         if not recent:
             return 2  # «нет»
-        if any(d.get("type") == "late" for d in recent):
+        if any(d.get_id() == "late" for d in recent):
             return 0
-        if any(d.get("type") == "early" for d in recent):
+        if any(d.get_id() == "early" for d in recent):
             return 1
         return 2  # только вариабельные
 
@@ -657,9 +657,7 @@ class FisherClassicStage:
         zc = self._zero_crossings_per_min(
             fhr, ctx.fs
         )  # ctx.fs = частота дискретизации FHR
-        baseline10 = ctx.nc.last_notification.get(
-            "median_fhr_10min"
-        )  # уже поддерживается
+        baseline10 = ctx.nc.last_notification.get_id()  # уже поддерживается
 
         s_bas = self._score_baseline(baseline10)
         s_bw = self._score_bandwidth(bw)

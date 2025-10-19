@@ -45,8 +45,8 @@ def create_server(http_server_settings: HTTPServerSettings, app_settings: AppSet
 
 
 def bootstrap() -> tuple[FastAPI, dict[str, Any]]:
-    http_server_settings = sync_container.get(HTTPServerSettings)
-    app_settings = sync_container.get(AppSettings)
+    http_server_settings = sync_container.get_id()
+    app_settings = sync_container.get_id()
     app = create_server(http_server_settings, app_settings)
     setup_dishka(async_container, app)
     setup_logger(app_settings.is_dev())

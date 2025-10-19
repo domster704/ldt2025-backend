@@ -6,7 +6,7 @@ from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, HTTPException
 from starlette import status
 
-from app.common.patient import CurrentPatientID
+from app.common.patient import CurrentPatient
 from app.modules.core.domain.patient import Patient
 from app.modules.core.infra.message_builder import AnamnesisMessageBuilder
 from app.modules.core.usecases.exceptions import NotFoundObject
@@ -28,8 +28,7 @@ async def get_patient_info(
         llm_gateway: Annotated[LLMGateway, FromComponent("llm")],
         ctg_repo: FromDishka[CTGRepository],
 ) -> Patient:
-    CurrentPatientID.set(patient_id)
-
+    CurrentPatient.set_id(patient_id)
     try:
         await load_all_patient_info(
             patient_id, patient_gtw, patient_repo, llm_gateway, AnamnesisMessageBuilder(), ctg_repo
