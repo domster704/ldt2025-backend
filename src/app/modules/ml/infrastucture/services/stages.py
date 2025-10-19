@@ -6,13 +6,12 @@ import numpy as np
 import pandas as pd
 
 from app.modules.ml.infrastucture.services.context import StreamContext
+from app.modules.ml.infrastucture.services.features import extract_features
 from app.modules.ml.infrastucture.services.utils import (
     calculate_stv,
     median_last_seconds,
     slice_last_seconds,
 )
-
-from app.modules.ml.infrastucture.services.features import extract_features
 
 
 class Stage(Protocol):
@@ -345,6 +344,7 @@ class AdvancedAccelDecelStage:
                 if curr > self.accel_active["peak"]:
                     self.accel_active["peak"] = curr
             self.accel_active["amp"] = max(self.accel_active["amp"], delta)
+            ctx.active_accel = self.accel_active
         else:
             if self.accel_active is not None:
                 dur = now - self.accel_active["start"]
@@ -362,6 +362,7 @@ class AdvancedAccelDecelStage:
                         now - 1, f"Акцелерация: +{amp} bpm, {dur}s", color="yellow"
                     )
                 self.accel_active = None
+                ctx.active_accel = None
 
         # --- Децелерации ---
         if delta <= self.decel_thr:
@@ -373,6 +374,7 @@ class AdvancedAccelDecelStage:
             self.decel_active["amp"] = min(
                 self.decel_active["amp"], delta
             )  # отрицательная
+            ctx.active_decel = self.decel_active
         else:
             if self.decel_active is not None:
                 dur = now - self.decel_active["start"]
@@ -400,6 +402,7 @@ class AdvancedAccelDecelStage:
                         now - 1, label, color="yellow" if dec_type != "late" else "red"
                     )
                 self.decel_active = None
+                ctx.active_decel = None
 
         accels_count = len(ctx.nc.last_notification["accelerations"])
         decels_count = len(ctx.nc.last_notification["decelerations"])
@@ -691,7 +694,8 @@ class StatusComposerStage:
         ) or ctx.nc.last_notification.get("hypoxia_proba")
         txt_proba = "недоступно" if proba is None else f"{round(proba*100):d}%"
         if proba is None:
-            prefix = "Вероятность гипоксии плода: недоступно"
+            minutes_to_demonstrate = 9 - (ctx.now_t // 60)
+            prefix = f"Вероятность гипоксии плода: будет доступно через {minutes_to_demonstrate} мин)"
         elif proba >= 0.80:
             prefix = f"Высокая вероятность гипоксии плода: {txt_proba}"
         elif proba >= 0.50:
@@ -703,10 +707,11 @@ class StatusComposerStage:
         # events
         active_accel = getattr(ctx, "active_accel", None)
         active_decel = getattr(ctx, "active_decel", None)
-        if active_accel is not None and active_accel.get("announced"):
-            notes.append("Акцелерация (≥15с)")
-        if active_decel is not None and active_decel.get("announced"):
-            notes.append("Децелерация (≥15с)")
+
+        if active_accel is not None:
+            notes.append("Акцелерация")
+        if active_decel is not None:
+            notes.append("Децелерация")
 
         # tachy/brady
         if ctx.state_flags.get("tachy_active"):
@@ -720,7 +725,7 @@ class StatusComposerStage:
                     delta_txt = f" ({sign}{abs(round(delta))} bpm от базального ритма)"
             notes.append(f"Подозрение на тахикардию{delta_txt}")
 
-        if ctx.state_flags.get("brady_active"):
+        elif ctx.state_flags.get("brady_active"):
             notes.append("Подозрение на брадикардию")
 
         status = prefix if not notes else prefix + " | " + " | ".join(notes)
