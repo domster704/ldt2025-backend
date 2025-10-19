@@ -695,7 +695,7 @@ class StatusComposerStage:
         txt_proba = "недоступно" if proba is None else f"{round(proba*100):d}%"
         if proba is None:
             minutes_to_demonstrate = 9 - (ctx.now_t // 60)
-            prefix = f"Вероятность гипоксии плода: будет доступно через {minutes_to_demonstrate} мин)"
+            prefix = f"Вероятность гипоксии плода: будет доступно через {minutes_to_demonstrate} мин"
         elif proba >= 0.80:
             prefix = f"Высокая вероятность гипоксии плода: {txt_proba}"
         elif proba >= 0.50:
