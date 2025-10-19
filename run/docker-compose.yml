@@ -17,7 +17,7 @@ services:
       HTTP_PORT: ${HTTP_PORT}
       API_VERSION: ${API_VERSION}
       DB_DRIVER: ${DB_DRIVER}
-      DB_DATABASE_NAME: './../app.db'
+      DB_DATABASE_NAME: './app.db'
     ports:
       - "8001:${HTTP_PORT}"
 
