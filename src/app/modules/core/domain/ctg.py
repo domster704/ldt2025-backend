@@ -28,6 +28,8 @@ class CTGResult:
     low_variability: int
     loss_signals: float
     timestamp: datetime
+    fischer_status: str = 'string'
+    savelyeva_status: str = 'string'
 
 
 @dataclass(slots=True)
