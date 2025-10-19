@@ -2,8 +2,8 @@ import pandas as pd
 from dishka.integrations.fastapi import inject, FromDishka
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.modules.core.usecases.ports.ctg import CTGPort
-from app.modules.core.usecases.ports.patients import PatientPort
+from app.modules.core.usecases.ports.ctg_repository import CTGRepository
+from app.modules.core.usecases.ports.patient_repository import PatientRepository
 from app.modules.ml.application.handlers.fetal_monitoring_handler import FetalMonitoringHandler
 from app.modules.ml.infrastucture.di import get_fetal_monitoring_handler
 
@@ -13,8 +13,8 @@ router = APIRouter()
 @inject
 async def analyze(
         patient_id: int,
-        patient_repo: FromDishka[PatientPort],
-        ctg_repo: FromDishka[CTGPort],
+        patient_repo: FromDishka[PatientRepository],
+        ctg_repo: FromDishka[CTGRepository],
         fetal_monitoring_handler: FetalMonitoringHandler = Depends(get_fetal_monitoring_handler)
 ):
     df = pd.DataFrame(columns=["day", "baseline_bpm", "stv_all", "accelerations_count"])

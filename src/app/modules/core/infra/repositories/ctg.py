@@ -4,10 +4,10 @@ from sqlalchemy import text, bindparam
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.core.domain.ctg import CTGHistory, CTGResult
-from app.modules.core.usecases.ports.ctg import CTGPort
+from app.modules.core.usecases.ports.ctg_repository import CTGRepository
 
 
-class CTGRepository(CTGPort):
+class SQLAlchemyCTGRepository(CTGRepository):
 
     def __init__(self, session: AsyncSession):
         self._session = session
@@ -56,7 +56,7 @@ class CTGRepository(CTGPort):
         ]
         return ctg_results
 
-    async def add_history(self, ctg_history: CTGHistory, patient_id: int) -> int | None:
+    async def add_history(self, ctg_history: CTGHistory, patient_id: int) -> int:
         stmt = text(
             """
             INSERT INTO ctg_history (patient_id, file_path, archive_path)
@@ -73,3 +73,7 @@ class CTGRepository(CTGPort):
         )).scalar_one()
         await self._session.commit()
         return id
+
+    async def add_histories(self, ctg_history_list: list[CTGHistory], patient_id: int) -> list[int]: ...
+
+    async def add_results(self, ctg_results: list[CTGResult], patient_id: int) -> None: ...

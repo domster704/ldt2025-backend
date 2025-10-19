@@ -6,11 +6,11 @@ from typing import Literal
 from dishka import Provider, Scope, provide, make_container, make_async_container, AsyncContainer
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, async_sessionmaker, AsyncSession
 
-from app.modules.core.infra.adapters.ctg import CTGRepository
-from app.modules.core.infra.adapters.patient import PatientRepository
+from app.modules.core.infra.repositories.ctg import SQLAlchemyCTGRepository
+from app.modules.core.infra.repositories.patient import SQLAlchemyPatientRepository
 from app.modules.core.settings import DatabaseSettings
-from app.modules.core.usecases.ports.ctg import CTGPort
-from app.modules.core.usecases.ports.patients import PatientPort
+from app.modules.core.usecases.ports.ctg_repository import CTGRepository
+from app.modules.core.usecases.ports.patient_repository import PatientRepository
 
 _ENV_PATH = os.environ.get("ENV_PATH", None)
 
@@ -43,13 +43,13 @@ class DatabaseProvider(Provider):
         async with session_factory() as session:
             yield session
 
-    @provide(scope=Scope.REQUEST, provides=PatientPort)
-    async def patient_repo(self, session: AsyncSession) -> PatientRepository:
-        return PatientRepository(session)
+    @provide(scope=Scope.REQUEST, provides=PatientRepository)
+    async def patient_repo(self, session: AsyncSession) -> SQLAlchemyPatientRepository:
+        return SQLAlchemyPatientRepository(session)
 
-    @provide(scope=Scope.REQUEST, provides=CTGPort)
-    async def ctg_repo(self, session: AsyncSession) -> CTGPort:
-        return CTGRepository(session)
+    @provide(scope=Scope.REQUEST, provides=CTGRepository)
+    async def ctg_repo(self, session: AsyncSession) -> CTGRepository:
+        return SQLAlchemyCTGRepository(session)
 
 
 _sync_container: Container | None = None

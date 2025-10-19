@@ -4,10 +4,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.core.domain.patient import Patient, PatientAdditionalInfo
-from app.modules.core.usecases.ports.patients import PatientPort
+from app.modules.core.usecases.ports.patient_repository import PatientRepository
 
 
-class PatientRepository(PatientPort):
+class SQLAlchemyPatientRepository(PatientRepository):
 
     def __init__(self, session: AsyncSession):
         self._session = session
