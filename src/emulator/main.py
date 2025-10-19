@@ -45,7 +45,7 @@ async def start(archive: UploadFile = File(...)):
 
 
 async def run_emulation(tmp_path: str):
-    async with websockets.connect('ws://127.0.0.1:8010/ws/ingest/input-signal') as ws:
+    async with websockets.connect('ws://server:8010/ws/ingest/input-signal') as ws:
         prev_timestamp = Decimal(0)
         for body, offset in sending_signals(tmp_path):
             await asyncio.sleep(float(Decimal(body['timestamp']) - prev_timestamp))
