@@ -26,7 +26,7 @@ class SQLAlchemyCTGRepository(CTGRepository):
         ctg_history = [
             CTGHistory(
                 id=row[0],
-                dir_path=row[2],
+                file_path_in_archive=row[2],
                 archive_path=row[3]
             )
             for row in res
@@ -67,13 +67,18 @@ class SQLAlchemyCTGRepository(CTGRepository):
             stmt,
             {
                 "patient_id": patient_id,
-                "file_path": ctg_history.dir_path,
-                "archive_path": ctg_history.archive_path,
+                "file_path": str(ctg_history.file_path_in_archive),
+                "archive_path": str(ctg_history.archive_path),
             }
         )).scalar_one()
         await self._session.commit()
         return id
 
-    async def add_histories(self, ctg_history_list: list[CTGHistory], patient_id: int) -> list[int]: ...
+    async def add_histories(self, ctg_history_list: list[CTGHistory], patient_id: int) -> list[int]:
+        ids = []
+        for ctg_history in ctg_history_list:
+            ids.append(await self.add_history(ctg_history, patient_id))
+
+        return ids
 
     async def add_results(self, ctg_results: list[CTGResult], patient_id: int) -> None: ...

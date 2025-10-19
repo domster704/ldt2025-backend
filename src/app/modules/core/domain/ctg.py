@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from datetime import datetime
 from os import PathLike
+from pathlib import Path
 from typing import Any
 
 
@@ -43,9 +44,9 @@ class CTGResult:
 @dataclass(slots=True)
 class CTGHistory:
     id: int | None
-    dir_path: PathLike
-    archive_path: PathLike | None
-    result: CTGResult | None = None
+    file_path_in_archive: PathLike[str]
+    archive_path: PathLike[str] | None = None
+    ctg_result: CTGResult | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "CTGHistory":

@@ -2,9 +2,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from typing import Any
 
+from app.modules.core.domain.mixin import ToDictMixin
+
 
 @dataclass(slots=True)
-class PatientAdditionalInfo:
+class PatientAdditionalInfo(ToDictMixin):
     diagnosis: str | None
     blood_gas_ph: float | None
     blood_gas_co2: float | None
@@ -21,7 +23,7 @@ class PatientAdditionalInfo:
         return PatientAdditionalInfo(**filtered)
 
 @dataclass(slots=True)
-class Patient:
+class Patient(ToDictMixin):
     id: int
     full_name: str
     additional_info: PatientAdditionalInfo | None = None
@@ -32,19 +34,26 @@ class Patient:
 
         self.additional_info.anamnesis = anamnesis
 
+    def has_anamnesis(self) -> bool:
+        if self.additional_info is None:
+            return False
+
+        return self.additional_info.anamnesis is not None
+
+    def has_additional_info(self) -> bool:
+        return self.additional_info is not None
+
     @classmethod
     def from_db(cls, data: Mapping[str, Any]) -> 'Patient':
-        if data.get('additional_info'):
-            additional_info_dict = data['additional_info']
-            additional_info = PatientAdditionalInfo.from_mapping(additional_info_dict)
-        else:
-            additional_info = None
-        data_dict = {
-            'additional_info': additional_info,
-            **data
-        }
+        data_dict = dict(**data)
+        if not data.get('additional_info'):
+            data_dict['additional_info'] = None
 
         allowed = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in data_dict.items() if k in allowed}
 
-        return Patient(**filtered)
+        patient = Patient(**filtered)
+        if data_dict['additional_info']:
+            patient_additional_info = PatientAdditionalInfo.from_mapping(data_dict['additional_info'])
+            patient.additional_info = patient_additional_info
+        return patient

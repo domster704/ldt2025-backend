@@ -5,6 +5,7 @@ from starlette import status
 from storage_server.application.dto.ctg_history import CTGHistoryAddInDTO, CTGHistoryReadOutDTO
 from storage_server.application.exceptions.application import UnexpectedError
 from storage_server.application.ports.ctg_history_repo import CTGHistoryRepository
+from storage_server.application.ports.ctg_result_repo import CTGResultRepository
 from storage_server.application.read_history import read_ctg_history
 from storage_server.application.save_ctg_history import save_ctg_history
 
@@ -14,13 +15,15 @@ router = APIRouter()
 @router.get("")
 @inject
 async def get_ctg_history(
-        patient_id: int, ctg_history_repo: FromDishka[CTGHistoryRepository]
+        patient_id: int,
+        ctg_history_repo: FromDishka[CTGHistoryRepository],
+        ctg_result_repo: FromDishka[CTGResultRepository],
 ) -> list[CTGHistoryReadOutDTO]:
     try:
-        return await read_ctg_history(patient_id, ctg_history_repo)
-    except UnexpectedError:
+        return await read_ctg_history(patient_id, ctg_history_repo, ctg_result_repo)
+    except UnexpectedError as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Unexpected error')
-    except Exception:
+    except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @router.put("")

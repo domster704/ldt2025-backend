@@ -17,6 +17,8 @@ class AppSettings(BaseSettings):
 
     run_mode: RunMode = 'dev'
     emulator_uri: HttpUrl
+    llm_uri: HttpUrl
+    external_server_uri: HttpUrl
 
 class HTTPServerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding='utf-8', extra='ignore')

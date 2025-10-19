@@ -26,4 +26,6 @@ ctg_results_table = Table(
     Column('high_variability', Integer),
     Column('low_variability', Integer),
     Column('loss_signals', Float),
+    Column('fischer_status', String(50)),
+    Column('savelyeva_status', String(50)),
 )

@@ -14,7 +14,7 @@ class SQLAlchemyCTGResultRepository(CTGResultRepository):
         self._session = session
 
     @override
-    async def read_by_ctg_id(self, ctg_id: int) -> AsyncIterable[CTGResult]:
+    async def read_by_ctg_id(self, ctg_id: int) -> CTGResult | None:
         stmt = (
             select(ctg_results_table)
             .where(ctg_results_table.c.ctg_id == ctg_id)
@@ -22,10 +22,12 @@ class SQLAlchemyCTGResultRepository(CTGResultRepository):
 
         result = await self._session.execute(stmt)
 
-        rows = result.all()
-        for row in rows:
-            patient = CTGResult.from_db(row._mapping)
-            yield patient
+        db_row = result.one_or_none()
+        if db_row is None:
+            return None
+
+        ctg_result = CTGResult.from_db(db_row._mapping)
+        return ctg_result
 
     @override
     async def save(self, ctg_id: int, ctg_result: CTGResult) -> None:

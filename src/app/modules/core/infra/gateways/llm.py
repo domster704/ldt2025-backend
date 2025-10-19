@@ -17,3 +17,11 @@ class HttpxLLMGateway(LLMGateway):
         )
         resp.raise_for_status()
         return resp.json()['response']
+
+class MockLLMGateway(LLMGateway):
+    def __init__(self, client: AsyncClient) -> None:
+        self._client = client
+
+    @override
+    async def get_anamnesis(self, query: str) -> str:
+        return 'OK'

@@ -25,7 +25,7 @@ class HttpxPatientGateway(PatientGateway):
     @override
     async def load_patient_ctg_history(self, patient_id: int) -> list[CTGHistory]:
         try:
-            resp = await self._client.get(f'/ctg_history/{patient_id}')
+            resp = await self._client.get(f'/ctg_history', params={"patient_id": patient_id})
         except Exception as e:
             raise
         resp.raise_for_status()
@@ -35,7 +35,7 @@ class HttpxPatientGateway(PatientGateway):
     async def load_patient_ctg_graphics(self, patient_id: int) -> Path:
         resp = await self._client.get(f'/ctg_graphics', params={'patient_id': patient_id})
         resp.raise_for_status()
-        tmp_file = tempfile.NamedTemporaryFile(delete=False)
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
         tmp_file.write(resp.content)
         tmp_file.close()
 
