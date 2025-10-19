@@ -41,6 +41,7 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
     poetry install --only main --no-root --no-ansi --no-interaction
 
 COPY src/app /build/src/app
+COPY src/static /build/src/static
 
 RUN --mount=type=cache,target=/root/.cache/pypoetry \
     --mount=type=cache,target=/root/.cache/pip \
@@ -65,6 +66,7 @@ RUN useradd -u 10001 -m appuser
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /build/src/app /home/app
+COPY --from=builder /build/src/static /home/static
 ENV PATH="/opt/venv/bin:${PATH}" \
     VIRTUAL_ENV="/opt/venv" \
     PYTHONPATH="/home/app:${PYTHONPATH}"
