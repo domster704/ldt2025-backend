@@ -170,69 +170,258 @@ class ModelsStage:
 
 
 class FigoStage:
-    """FIGO классификация"""
+    """
+    FIGO по таблице:
+      - Базальный ритм: норма 110–150; препатология 100–110 или 150–170; патология <100 или >170
+      - Вариабельность (амплитуда, уд/мин): норма 5–25; препатология 5–10 >40 мин или >25; патология <5 >40 мин или синусоидальный
+      - Акцелерации (за 10 мин): норма ≥2/10 мин; препатология — отсутствуют >40 мин
+      - Децелерации: норма — отсутствуют/спорадические неглубокие; препатология — спорадические любого типа;
+                     патология — периодические выраженные поздние (>=2 late за 10 мин с амплитудой ≥15 bpm)
+    """
+
+    def __init__(self, variab_win_sec: int = 600, long_thr_sec: int = 40 * 60):
+        self.variab_win_sec = variab_win_sec  # окно для оценки амплитуды (10 мин)
+        self.long_thr_sec = long_thr_sec  # 40 минут
+        # таймеры для длительных состояний вариабельности
+        self._low_var_since: Optional[int] = None  # <5
+        self._midlow_var_since: Optional[int] = None  # 5–10
+        # отсутствие акцелераций
+        self._no_accel_since: Optional[int] = 0
+
+    # ---------- helpers ----------
+
+    def _fhr_last(self, ctx: StreamContext, sec: int) -> Optional[np.ndarray]:
+        vals = slice_last_seconds(ctx.sec_fhr, ctx.now_t, sec)
+        x = np.array([v for v in vals if pd.notna(v)], dtype=float)
+        return x if x.size else None
+
+    def _amp_band(self, fhr: np.ndarray) -> float:
+        # амплитуда как половина междецильного размаха (устойчиво к выбросам)
+        p10, p90 = np.nanpercentile(fhr, 10), np.nanpercentile(fhr, 90)
+        return float(max(0.0, (p90 - p10) / 2.0))
+
+    def _sinusoidal_like(self, fhr: Optional[np.ndarray]) -> bool:
+        # грубая эвристика: очень узкая полоса + регулярность
+        if fhr is None or len(fhr) < 60:
+            return False
+        amp = self._amp_band(fhr)
+        if (
+            amp >= 5
+        ):  # у синусоидального амплитуда обычно ~5–15, но вариабельность "монотонная".
+            # попробуем проверить "монотонность": мало смен знака вокруг сглаженной линии
+            trend = (
+                pd.Series(fhr).rolling(15, min_periods=1, center=True).median().values
+            )
+            y = fhr - trend
+            crossings = np.where(np.diff(np.signbit(y)))[0]
+            per_min = len(fhr) / 5 / 60.0
+            return (amp < 10) and (len(crossings) / max(1.0, per_min) <= 2.0)
+        return amp < 5  # очень узкая — допустим как прокси к плохому паттерну
+
+    def _accels_last(self, ctx: StreamContext, sec: int) -> int:
+        lo = ctx.now_t - sec
+        return sum(
+            1
+            for a in ctx.nc.last_notification["accelerations"]
+            if a.get("start") is not None and a["start"] >= lo
+        )
+
+    def _last_accel_time(self, ctx: StreamContext) -> Optional[int]:
+        acc = ctx.nc.last_notification["accelerations"]
+        if not acc:
+            return None
+        # берём время конца, если есть, иначе старт
+        return max(
+            (a.get("end") if a.get("end") is not None else a["start"]) for a in acc
+        )
+
+    def _decels_last10(self, ctx: StreamContext) -> List[dict]:
+        lo = ctx.now_t - 600
+        return [
+            d
+            for d in ctx.nc.last_notification["decelerations"]
+            if d.get("start") is not None and d["start"] >= lo
+        ]
+
+    # -------- per-parameter categories --------
+
+    def _baseline_cat(self, baseline: Optional[float]) -> Tuple[str, Optional[str]]:
+        if baseline is None:
+            return "unknown", "Нет 10-мин базального"
+        if baseline < 100 or baseline > 170:
+            return "path", f"Базальный {baseline:.0f} уд/мин (<100 или >170)"
+        if (100 <= baseline < 110) or (150 <= baseline <= 170):
+            return "pre", f"Базальный {baseline:.0f} (100–110 или 150–170)"
+        return "norm", None  # 110–150
+
+    def _variability_cat(
+        self, ctx: StreamContext, fhr10: Optional[np.ndarray]
+    ) -> Tuple[str, Optional[str]]:
+        if fhr10 is None or len(fhr10) < 5 * 60:  # <1 мин данных — мало для оценки
+            return "unknown", "Недостаточно данных для вариабельности"
+        amp = self._amp_band(fhr10)  # уд/мин
+        now = ctx.now_t
+
+        # обновляем таймеры длительности
+        if amp < 5:
+            self._low_var_since = self._low_var_since or now
+            self._midlow_var_since = None
+        elif 5 <= amp <= 10:
+            self._midlow_var_since = self._midlow_var_since or now
+            self._low_var_since = None
+        else:
+            self._low_var_since = None
+            self._midlow_var_since = None
+
+        # синусоидальный (патология)
+        if self._sinusoidal_like(fhr10):
+            return "path", "Синусоидальный ритм"
+
+        # длительные состояния
+        if (
+            self._low_var_since is not None
+            and (now - self._low_var_since) >= self.long_thr_sec
+        ):
+            return "path", f"Вариабельность <5 уд/мин >40 мин (≈{amp:.1f})"
+        if amp > 25:
+            return "pre", f"Вариабельность >25 уд/мин (≈{amp:.1f})"
+        if (
+            self._midlow_var_since is not None
+            and (now - self._midlow_var_since) >= self.long_thr_sec
+        ):
+            return "pre", f"Вариабельность 5–10 уд/мин >40 мин (≈{amp:.1f})"
+        # иначе в пределах нормы 5–25
+        if 5 <= amp <= 25:
+            return "norm", None
+        # короткие отклонения трактуем как unknown/pre в зависимости от стороны
+        return (
+            "pre" if amp < 5 else "pre"
+        ), f"Кратковременная вариабельность {'<5' if amp<5 else '>25'} (≈{amp:.1f})"
+
+    def _accelerations_cat(self, ctx: StreamContext) -> Tuple[str, Optional[str]]:
+        n10 = self._accels_last(ctx, 600)
+        if n10 >= 2:
+            self._no_accel_since = None
+            return "norm", None
+        last_acc = self._last_accel_time(ctx)
+        if last_acc is None:
+            # не было ни одной акцелерации с начала наблюдения
+            none_for = ctx.now_t
+        else:
+            none_for = ctx.now_t - last_acc
+        # запомним, откуда идёт «нет акцелераций»
+        self._no_accel_since = self._no_accel_since or (ctx.now_t - none_for)
+        if none_for >= self.long_thr_sec:
+            return "pre", "Акцелерации отсутствуют >40 мин"
+        # отсутствие в последние 10 минут — не делаем «патологию» по FIGO
+        return "unknown", "Мало/нет акцелераций за 10 мин"
+
+    def _decelerations_cat(self, ctx: StreamContext) -> Tuple[str, Optional[str]]:
+        dec10 = self._decels_last10(ctx)
+        if not dec10:
+            return "norm", None
+        # есть поздние выраженные периодические? (берём как ≥2 late с амплитудой ≥15 bpm за 10 мин)
+        late_expr = [
+            d for d in dec10 if d.get("type") == "late" and (d.get("amp_bpm", 0) >= 15)
+        ]
+        if len(late_expr) >= 2:
+            return "path", "Периодические выраженные поздние децелерации"
+        # иначе — спорадические любого типа => препатология
+        # (нормой считаем «неглубокие спорадические»: ≤1 эпизод и amp<15, не late)
+        if (
+            len(dec10) == 1
+            and dec10[0].get("amp_bpm", 0) < 15
+            and dec10[0].get("type") != "late"
+        ):
+            return "norm", "Спорадическая неглубокая децелерация"
+        return "pre", "Спорадические децелерации"
 
     def tick(self, ctx: StreamContext) -> None:
-        baseline = ctx.nc.last_notification["median_fhr_10min"]
-        stv_10 = ctx.nc.last_notification["stv"]
-        status = None
-        color = "yellow"
 
-        long_decels = any(
-            (d["end"] is not None and (d["end"] - d["start"] + 1) >= 180)
-            for d in ctx.nc.last_notification["decelerations"]
-        )
-        recent_decels = any(
-            (d["end"] or ctx.now_t) >= ctx.now_t - 600
-            and (d["start"]) >= ctx.now_t - 600
-            for d in ctx.nc.last_notification["decelerations"]
-        )
+        if ctx.now_t % 60 != 0:
+            return
+        baseline = ctx.nc.last_notification.get(
+            "median_fhr_10min"
+        )  # ДОЛЖНО быть за 600с
+        fhr10 = self._fhr_last(ctx, self.variab_win_sec)
 
-        if baseline is None or stv_10 is None:
-            status = "Сомнительное"
-            color = "yellow"
+        b_cat, b_reason = self._baseline_cat(baseline)
+        v_cat, v_reason = self._variability_cat(ctx, fhr10)
+        a_cat, a_reason = self._accelerations_cat(ctx)
+        d_cat, d_reason = self._decelerations_cat(ctx)
+
+        # финальная агрегация по FIGO
+        reasons = []
+        cats = [
+            ("baseline", b_cat, b_reason),
+            ("variability", v_cat, v_reason),
+            ("accelerations", a_cat, a_reason),
+            ("decelerations", d_cat, d_reason),
+        ]
+
+        n_path = sum(1 for _, c, _ in cats if c == "path")
+        n_pre = sum(1 for _, c, _ in cats if c == "pre")
+
+        if n_path >= 1:
+            status, color = "Патологическое", "red"
+        elif n_pre >= 1:
+            status, color = "Сомнительное", "yellow"
         else:
-            if baseline < 100 or stv_10 < 1.0:
-                status = "Претерминальное"
-                color = "purple"
-            elif (
-                (baseline > 180)
-                or (160 < baseline <= 180 and stv_10 < 2.0)
-                or long_decels
-            ):
-                status = "Патологическое"
-                color = "red"
-            elif (
-                (100 <= baseline < 110)
-                or (160 <= baseline <= 180)
-                or (1.0 <= stv_10 < 3.0)
-                or recent_decels
-            ):
-                status = "Сомнительное"
-                color = "yellow"
+            # если всё norm/unknown и нет достаточных данных — считаем «Препатология» (сомнительное)
+            if any(c == "unknown" for _, c, _ in cats):
+                status, color = "Сомнительное", "yellow"
             else:
-                status = "Нормальное"
-                color = "green"
+                status, color = "Нормальное", "green"
 
+        for name, c, r in cats:
+            if (c in ("pre", "path")) and r:
+                reasons.append(r)
+        note = f"FIGO: {status}"
+        if reasons:
+            note += " — " + "; ".join(reasons[:3])  # до 3 причин, чтобы не шуметь
+
+        prev = ctx.state_flags.get("figo_last")
         ctx.nc.last_notification["figo_situation"] = status
-        if status != ctx.state_flags["figo_last"]:
-            ctx.nc.notify(ctx.now_t, f"Состояние FIGO: {status}", color=color)
+        if status != prev:
+            ctx.nc.notify(ctx.now_t, note, color=color)
             ctx.state_flags["figo_last"] = status
 
 
 class ContractionStage:
     """
-    Онлайновая детекция схваток по сигналу UC:
-    - Порог по амплитуде относительно локального базиса (медиана за 120 с) + min длительность.
+    Онлайновая детекция схваток по UC с робастным базисом и динамическим порогом.
+    - Базис: медиана за baseline_win.
+    - Порог: max(amp_thr_abs, iqr*iqr_k).
+    - Сглаживание: медианная фильтрация коротким окном.
     """
 
-    def __init__(self, baseline_win=120, amp_thr=15.0, min_len=30, cooldown=10):
+    def __init__(
+        self,
+        baseline_win=180,
+        amp_thr_abs=12.0,
+        iqr_k=0.9,
+        min_len=25,
+        cooldown=10,
+        smooth_win=5,
+    ):
         self.baseline_win = baseline_win
-        self.amp_thr = amp_thr
+        self.amp_thr_abs = amp_thr_abs
+        self.iqr_k = iqr_k
         self.min_len = min_len
         self.cooldown = cooldown
+        self.smooth_win = smooth_win
         self.active = None
         self.last_end = -(10**9)
+
+    def _median_last(self, arr, now, sec):
+        return median_last_seconds(arr, now, sec)
+
+    def _iqr_last(self, arr, now, sec):
+        vals = slice_last_seconds(arr, now, sec)
+        if not vals:
+            return None
+        x = np.array([v for v in vals if pd.notna(v)], dtype=float)
+        return float(np.subtract(*np.nanpercentile(x, [75, 25]))) if x.size else None
 
     def tick(self, ctx: StreamContext) -> None:
         if not ctx.sec_uc or ctx.sec_uc[-1][0] != ctx.now_t:
@@ -242,81 +431,131 @@ class ContractionStage:
         if pd.isna(uc):
             return
 
-        base = median_last_seconds(ctx.sec_uc, now, self.baseline_win)
-        if base is None:
+        # сглаживание медианным окном по последним smooth_win секундам
+        vals = slice_last_seconds(ctx.sec_uc, now, self.smooth_win)
+        if not vals:
             return
-        above = (uc - base) >= self.amp_thr
+        uc_smooth = float(np.median(vals)) if len(vals) else uc
 
-        # старт
-        if self.active is None and above and (now - self.last_end) >= self.cooldown:
-            self.active = {"start": now, "peak": now, "peak_value": uc}
-        # обновление пика
-        if self.active is not None:
-            if uc > self.active["peak_value"]:
-                self.active["peak_value"] = uc
+        base = self._median_last(ctx.sec_uc, now, self.baseline_win)
+        iqr = self._iqr_last(ctx.sec_uc, now, self.baseline_win)
+        if base is None or iqr is None:
+            return
+
+        thr_dyn = max(self.amp_thr_abs, iqr * self.iqr_k)
+        above = (uc_smooth - base) >= thr_dyn
+
+        if self.active is None:
+            if above and (now - self.last_end) >= self.cooldown:
+                self.active = {
+                    "start": now,
+                    "peak": now,
+                    "peak_value": uc_smooth,
+                    "base": base,
+                    "thr": thr_dyn,
+                }
+                ctx.nc.notify(
+                    now, f"Старт схватки (UC↑ ≥ {thr_dyn:.1f})", color="yellow"
+                )
+        else:
+            # обновляем пик
+            if uc_smooth > self.active["peak_value"]:
+                self.active["peak_value"] = uc_smooth
                 self.active["peak"] = now
             # завершение
             if not above:
                 dur = now - self.active["start"]
                 if dur >= self.min_len:
                     self.active["end"] = now
+                    amp = float(self.active["peak_value"] - self.active["base"])
+                    self.active["amp"] = float(round(amp, 1))
                     ctx.nc.last_notification["contractions"].append(self.active)
+                    ctx.nc.notify(
+                        now,
+                        f"Схватка: amp≈{self.active['amp']} UC, {dur}s",
+                        color="yellow",
+                    )
                     self.last_end = now
                 self.active = None
 
 
 class AdvancedAccelDecelStage:
     """
-    Детектирует акцелерации/децелерации с измерением амплитуды и длительности,
-    классифицирует децелерации: early / late / variable (по привязке к схваткам).
+    Адаптивная детекция акцелераций/децелераций:
+    - Робастный локальный базис (медиана по win).
+    - Порог: max(fixed_thr, iqr*k_z) по Δbpm.
+    - Разрешаем короткие разрывы до gap_tol_sec.
+    - Доп. критерий площади (AUC) в bpm*sec для длинных слабых эпизодов.
+    - Классификация децелераций по привязке к схваткам улучшена.
     """
 
     def __init__(
-        self, local_baseline_window_sec=60, accel_thr=15.0, decel_thr=-15.0, min_len=10
+        self,
+        local_baseline_window_sec=90,
+        accel_fixed_thr=12.0,
+        decel_fixed_thr=-12.0,
+        iqr_k=0.85,
+        min_len=10,
+        gap_tol_sec=3,
+        area_thr_accel=120.0,  # ~10 bpm * 12 s
+        area_thr_decel=120.0,
     ):
         self.win = local_baseline_window_sec
-        self.accel_thr = accel_thr
-        self.decel_thr = decel_thr
+        self.accel_fixed_thr = accel_fixed_thr
+        self.decel_fixed_thr = decel_fixed_thr
+        self.iqr_k = iqr_k
         self.min_len = min_len
+        self.gap_tol = gap_tol_sec
+        self.area_thr_accel = area_thr_accel
+        self.area_thr_decel = area_thr_decel
+
         self.accel_active = None
         self.decel_active = None
+        self._accel_gap = 0
+        self._decel_gap = 0
+
+    def _robust_base_iqr(self, arr, now, sec):
+        vals = slice_last_seconds(arr, now, sec)
+        if not vals:
+            return None, None
+        x = np.array([v for v in vals if pd.notna(v)], dtype=float)
+        if x.size == 0:
+            return None, None
+        base = float(np.nanmedian(x))
+        iqr = float(np.subtract(*np.nanpercentile(x, [75, 25])))
+        return base, iqr
 
     def _nearest_contraction(self, ctx: StreamContext, t0: int, t1: int):
-        # ищем схватку, перекрывающуюся по времени
         overlaps = []
         for c in ctx.nc.last_notification["contractions"]:
-            if c["end"] >= t0 and c["start"] <= t1:
+            if c.get("end") is not None and c["end"] >= t0 and c["start"] <= t1:
                 overlaps.append(c)
-        # берем самую "центральную"
-        if not overlaps:
-            return None
-        return max(overlaps, key=lambda c: min(t1, c["end"]) - max(t0, c["start"]))
+        return (
+            max(overlaps, key=lambda c: min(t1, c["end"]) - max(t0, c["start"]))
+            if overlaps
+            else None
+        )
 
     def _classify_decel(self, ctx: StreamContext, start: int, end: int, amp: float):
         c = self._nearest_contraction(ctx, start, end)
         if c is None:
             return "variable", None, None
-        # запаздывание: разница между началом урежения и началом схватки
         lag_start = start - c["start"]
-        # позиция пика схватки относительно эпизода
-        rel_peak = c["peak"] - ((start + end) // 2)
-
-        # Эвристики по определению типов (из методички — поздние: лаг ~30–60 c, возврат после схватки)
-        if lag_start >= 30 and (end >= c["end"]):
+        # поздняя: начало спустя ≥30с от старта схватки и возврат после конца схватки
+        if lag_start >= 30 and end >= c["end"]:
             grade = "mild" if amp <= 15 else "moderate" if amp <= 45 else "severe"
             return (
                 "late",
                 grade,
                 {"contraction_start": c["start"], "contraction_peak": c["peak"]},
             )
-        # Ранние: начало ≈ старт схватки, плавные
+        # ранняя: примерно синхронна со схваткой
         if abs(lag_start) <= 10 and c["start"] <= start <= c["peak"] <= end <= c["end"]:
             return (
                 "early",
                 None,
                 {"contraction_start": c["start"], "contraction_peak": c["peak"]},
             )
-        # Иначе считаем вариабельной
         return (
             "variable",
             None,
@@ -331,84 +570,128 @@ class AdvancedAccelDecelStage:
         if pd.isna(curr):
             return
 
-        base = median_last_seconds(ctx.sec_fhr, now, self.win)
-        if base is None or pd.isna(base):
+        base, iqr = self._robust_base_iqr(ctx.sec_fhr, now, self.win)
+        if base is None or iqr is None:
             return
-        delta = curr - base
+        delta = float(curr - base)
 
-        # --- Акцелерации ---
-        if delta >= self.accel_thr:
+        # адаптивные пороги
+        accel_thr = max(self.accel_fixed_thr, iqr * self.iqr_k)
+        decel_thr = min(self.decel_fixed_thr, -iqr * self.iqr_k)  # отрицательный
+
+        # ===== АКЦЕЛЕРАЦИИ =====
+        if delta >= accel_thr:
             if self.accel_active is None:
-                self.accel_active = {"start": now, "peak": curr, "amp": 0.0}
+                self.accel_active = {"start": now, "peak": curr, "amp": 0.0, "auc": 0.0}
+                self._accel_gap = 0
+                ctx.nc.notify(
+                    now, f"Старт акцелерации (Δ≥{accel_thr:.1f} bpm)", color="yellow"
+                )
             else:
                 if curr > self.accel_active["peak"]:
                     self.accel_active["peak"] = curr
             self.accel_active["amp"] = max(self.accel_active["amp"], delta)
+            self.accel_active["auc"] += max(0.0, delta)
             ctx.active_accel = self.accel_active
         else:
+            # допустим короткий разрыв
             if self.accel_active is not None:
-                dur = now - self.accel_active["start"]
-                if dur >= self.min_len:
-                    amp = float(round(self.accel_active["amp"], 1))
-                    ctx.nc.last_notification["accelerations"].append(
-                        {
-                            "start": self.accel_active["start"],
-                            "end": now - 1,
-                            "amp_bpm": amp,
-                            "dur_s": dur,
-                        }
-                    )
-                    ctx.nc.notify(
-                        now - 1, f"Акцелерация: +{amp} bpm, {dur}s", color="yellow"
-                    )
-                self.accel_active = None
-                ctx.active_accel = None
+                self._accel_gap += 1
+                if self._accel_gap <= self.gap_tol:
+                    # продолжаем копить площадь даже на грани порога (если чуть ниже — 0)
+                    pass
+                else:
+                    # закрытие
+                    dur = now - self.accel_active["start"] - self._accel_gap + 1
+                    if (
+                        dur >= self.min_len
+                        or self.accel_active["auc"] >= self.area_thr_accel
+                    ):
+                        amp = float(round(self.accel_active["amp"], 1))
+                        end_t = now - self._accel_gap
+                        ctx.nc.last_notification["accelerations"].append(
+                            {
+                                "start": self.accel_active["start"],
+                                "end": end_t,
+                                "amp_bpm": amp,
+                                "dur_s": int(dur),
+                            }
+                        )
+                        ctx.nc.notify(
+                            end_t, f"Акцелерация: +{amp} bpm, {dur}s", color="yellow"
+                        )
+                    self.accel_active = None
+                    ctx.active_accel = None
+                    self._accel_gap = 0
 
-        # --- Децелерации ---
-        if delta <= self.decel_thr:
+        # ===== ДЕЦЕЛЕРАЦИИ =====
+        if delta <= decel_thr:
             if self.decel_active is None:
-                self.decel_active = {"start": now, "nadir": curr, "amp": 0.0}
+                self.decel_active = {
+                    "start": now,
+                    "nadir": curr,
+                    "amp": 0.0,
+                    "auc": 0.0,
+                }
+                self._decel_gap = 0
+                ctx.nc.notify(
+                    now, f"Старт децелерации (Δ≤{decel_thr:.1f} bpm)", color="yellow"
+                )
             else:
                 if curr < self.decel_active["nadir"]:
                     self.decel_active["nadir"] = curr
             self.decel_active["amp"] = min(
                 self.decel_active["amp"], delta
             )  # отрицательная
+            self.decel_active["auc"] += max(0.0, -delta)
             ctx.active_decel = self.decel_active
         else:
             if self.decel_active is not None:
-                dur = now - self.decel_active["start"]
-                if dur >= self.min_len:
-                    amp = float(round(abs(self.decel_active["amp"]), 1))
-                    dec_type, grade, uc_ref = self._classify_decel(
-                        ctx, self.decel_active["start"], now - 1, amp
-                    )
-                    ctx.nc.last_notification["decelerations"].append(
-                        {
-                            "start": self.decel_active["start"],
-                            "end": now - 1,
-                            "amp_bpm": amp,
-                            "dur_s": dur,
-                            "type": dec_type,
-                            "grade": grade,
-                            "uc_ref": uc_ref,
-                        }
-                    )
-                    label = f"Децелерация ({dec_type}"
-                    if grade:
-                        label += f", {grade}"
-                    label += f"): −{amp} bpm, {dur}s"
-                    ctx.nc.notify(
-                        now - 1, label, color="yellow" if dec_type != "late" else "red"
-                    )
-                self.decel_active = None
-                ctx.active_decel = None
+                self._decel_gap += 1
+                if self._decel_gap <= self.gap_tol:
+                    pass
+                else:
+                    dur = now - self.decel_active["start"] - self._decel_gap + 1
+                    if (
+                        dur >= self.min_len
+                        or self.decel_active["auc"] >= self.area_thr_decel
+                    ):
+                        amp = float(round(abs(self.decel_active["amp"]), 1))
+                        end_t = now - self._decel_gap
+                        dec_type, grade, uc_ref = self._classify_decel(
+                            ctx, self.decel_active["start"], end_t, amp
+                        )
+                        ctx.nc.last_notification["decelerations"].append(
+                            {
+                                "start": self.decel_active["start"],
+                                "end": end_t,
+                                "amp_bpm": amp,
+                                "dur_s": int(dur),
+                                "type": dec_type,
+                                "grade": grade,
+                                "uc_ref": uc_ref,
+                            }
+                        )
+                        label = f"Децелерация ({dec_type}"
+                        if grade:
+                            label += f", {grade}"
+                        label += f"): −{amp} bpm, {dur}s"
+                        ctx.nc.notify(
+                            end_t,
+                            label,
+                            color="yellow" if dec_type != "late" else "red",
+                        )
+                    self.decel_active = None
+                    ctx.active_decel = None
+                    self._decel_gap = 0
 
-        accels_count = len(ctx.nc.last_notification["accelerations"])
-        decels_count = len(ctx.nc.last_notification["decelerations"])
-
-        ctx.nc.last_notification["accelerations_count"] = accels_count
-        ctx.nc.last_notification["decelerations_count"] = decels_count
+        # обновим счетчики
+        ctx.nc.last_notification["accelerations_count"] = len(
+            ctx.nc.last_notification["accelerations"]
+        )
+        ctx.nc.last_notification["decelerations_count"] = len(
+            ctx.nc.last_notification["decelerations"]
+        )
 
 
 class SavelyevaScoreStage:
@@ -686,7 +969,7 @@ class FisherClassicStage:
 
 
 class StatusComposerStage:
-    """Читает последние уведомления и составляет строку статуса."""
+    """Расширенный статус для быстрого чтения."""
 
     def tick(self, ctx: StreamContext) -> None:
         proba = ctx.nc.last_notification.get(
@@ -694,7 +977,7 @@ class StatusComposerStage:
         ) or ctx.nc.last_notification.get("hypoxia_proba")
         txt_proba = "недоступно" if proba is None else f"{round(proba*100):d}%"
         if proba is None:
-            minutes_to_demonstrate = 9 - (ctx.now_t // 60)
+            minutes_to_demonstrate = max(0, 9 - (ctx.now_t // 60))
             prefix = f"Вероятность гипоксии плода: будет доступно через {minutes_to_demonstrate} мин"
         elif proba >= 0.80:
             prefix = f"Высокая вероятность гипоксии плода: {txt_proba}"
@@ -704,29 +987,37 @@ class StatusComposerStage:
             prefix = f"Вероятность гипоксии плода: {txt_proba}"
 
         notes = []
-        # events
-        active_accel = getattr(ctx, "active_accel", None)
-        active_decel = getattr(ctx, "active_decel", None)
+        ln = ctx.nc.last_notification
 
-        if active_accel is not None:
-            notes.append("Акцелерация")
-        if active_decel is not None:
-            notes.append("Децелерация")
+        # активные события
+        if getattr(ctx, "active_accel", None) is not None:
+            notes.append("Акцелерация (идёт)")
+        if getattr(ctx, "active_decel", None) is not None:
+            notes.append("Децелерация (идёт)")
 
         # tachy/brady
         if ctx.state_flags.get("tachy_active"):
-            baseline = ctx.nc.last_notification.get("median_fhr_10min")
-            curr = ctx.nc.last_notification.get("current_fhr")
-            delta_txt = ""
+            baseline = ln.get("median_fhr_10min")
+            curr = ln.get("current_fhr")
             if baseline is not None and curr is not None:
                 delta = curr - baseline
-                if not np.isnan(delta):
-                    sign = "+" if delta >= 0 else "−"
-                    delta_txt = f" ({sign}{abs(round(delta))} bpm от базального ритма)"
-            notes.append(f"Подозрение на тахикардию{delta_txt}")
-
+                sign = "+" if delta >= 0 else "−"
+                notes.append(
+                    f"Подозрение на тахикардию ({sign}{abs(round(delta))} bpm от базального)"
+                )
+            else:
+                notes.append("Подозрение на тахикардию")
         elif ctx.state_flags.get("brady_active"):
             notes.append("Подозрение на брадикардию")
+
+        # краткие числовые подсказки
+        if (
+            ln.get("accelerations_count") is not None
+            and ln.get("decelerations_count") is not None
+        ):
+            notes.append(
+                f"Акцел/Децел: {ln['accelerations_count']}/{ln['decelerations_count']}"
+            )
 
         status = prefix if not notes else prefix + " | " + " | ".join(notes)
         ctx.nc.last_notification["current_status"] = status
