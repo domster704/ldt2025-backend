@@ -17,9 +17,10 @@ class FetalMonitoringHandler:
         start_ts = points[0].timestamp
         rows = []
         for p in points:
-            time_sec = p.timestamp - start_ts
+            # time_sec = p.timestamp - start_ts
+            # print(time_sec, p.timestamp, start_ts)
             rows.append({
-                "time_sec": time_sec,
+                "time_sec": p.timestamp,
                 "value_bpm": float(p.bpm) if p.bpm is not None else None,
                 "value_uterus": float(p.uc) if p.uc is not None else None,
             })
