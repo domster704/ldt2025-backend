@@ -24,7 +24,7 @@ class SQLAlchemyPatientRepository(PatientRepository):
         if patient_row is not None:
             patient = Patient(
                 id=patient_row[0],
-                fio=patient_row[1],
+                full_name=patient_row[1],
             )
         return patient
 
@@ -66,7 +66,7 @@ class SQLAlchemyPatientRepository(PatientRepository):
         return [
             Patient(
                 id=row[0],
-                fio=row[1],
+                full_name=row[1],
             )
             for row in rows
         ]

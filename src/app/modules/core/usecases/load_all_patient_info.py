@@ -1,17 +1,17 @@
+from .ports.ctg_repository import CTGRepository
 from .ports.llm_gateway import LLMGateway
 from .ports.llm_message_builder import AnamnesisMessageBuilderProtocol
 from .ports.patient_gateway import PatientGateway
-from ..infra.repositories.ctg import SQLAlchemyCTGRepository
-from ..infra.repositories.patient import SQLAlchemyPatientRepository
+from .ports.patient_repository import PatientRepository
 
 
 async def load_all_patient_info(
         patient_id: int,
         patient_gtw: PatientGateway,
-        patient_repo: SQLAlchemyPatientRepository,
+        patient_repo: PatientRepository,
         llm_gtw: LLMGateway,
         anamnesis_builder: AnamnesisMessageBuilderProtocol,
-        ctg_repo: SQLAlchemyCTGRepository
+        ctg_repo: CTGRepository,
 ) -> None:
         patient = await patient_gtw.load_patient(patient_id)
         query = (
@@ -28,5 +28,7 @@ async def load_all_patient_info(
         patient.set_anamnesis(anamnesis)
         await patient_repo.save(patient)
         ctg_history = await patient_gtw.load_patient_ctg_history(patient_id)
-        ctg_ids = await ctg_repo.add_histories(ctg_history, patient_id)
-        await patient_gtw.load_patient_ctg_results(ctg_ids)
+        archive_path = await patient_gtw.load_patient_ctg_graphics(patient_id)
+        for obj in ctg_history:
+                obj.set_archive_path(archive_path)
+        await ctg_repo.add_histories(ctg_history, patient_id)

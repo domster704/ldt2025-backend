@@ -16,4 +16,4 @@ class HttpxLLMGateway(LLMGateway):
             json={"message": query},
         )
         resp.raise_for_status()
-        return resp.read().decode('utf-8')
+        return resp.json()['response']
