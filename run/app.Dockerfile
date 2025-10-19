@@ -71,6 +71,7 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 
 WORKDIR /home
 
+COPY ./app/static ./static
 COPY ./app.db .
 
 EXPOSE 8000
