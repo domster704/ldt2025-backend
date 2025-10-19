@@ -33,7 +33,9 @@ async def get_ctg_graphic(
         "deceleration_little": 0,
         "high_variability": 0,
         "low_variability": 0,
-        "loss_signals": 0
+        "loss_signals": 0,
+        "fischer_status": "string",
+        "savelyeva_status": "string"
     }))
     mock_file_path = Path('').resolve().parent / 'static' / 'mock_graphic.json'
     with open(mock_file_path, mode='r') as f:
