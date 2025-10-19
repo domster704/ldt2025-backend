@@ -39,11 +39,9 @@ async def frontend_ws(
             ml_res: Process = get_fetal_monitoring_handler.process_stream(points)
             process_dto = ProcessDTO.model_validate(asdict(ml_res))
 
-            for point in points:
-                dto = CardiotocographyPointDTO(**asdict(point))
-                await websocket.send_json({
-                    **dto.model_dump(),
-                    "process": process_dto.model_dump()
-                })
+            await websocket.send_json({
+                "points": [CardiotocographyPointDTO(**asdict(p)).model_dump() for p in points],
+                "process": process_dto.model_dump()
+            })
     except WebSocketDisconnect:
         pass
